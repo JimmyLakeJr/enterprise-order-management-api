@@ -1,0 +1,7 @@
+.git
+.env
+server
+server.exe
+tmp/
+dist/
+coverage.out
