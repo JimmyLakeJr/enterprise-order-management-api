@@ -1,7 +1,17 @@
 .env
 *.exe
+*.exe~
+*.dll
+*.so
+*.dylib
 *.test
+*.out
+coverage.*
+*.coverprofile
+profile.cov
 bin/
 tmp/
 vendor/
+go.work
+go.work.sum
 .DS_Store
