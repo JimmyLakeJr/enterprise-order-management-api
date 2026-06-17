@@ -31,6 +31,9 @@ func NewProductService(products repository.ProductRepository, categories reposit
 }
 
 func (s *productService) Create(ctx context.Context, req dto.ProductRequest) (*dto.ProductResponse, error) {
+	if err := validateProductRequest(req); err != nil {
+		return nil, err
+	}
 	if err := s.ensureActiveCategory(ctx, req.CategoryID); err != nil {
 		return nil, err
 	}
@@ -49,7 +52,7 @@ func (s *productService) Create(ctx context.Context, req dto.ProductRequest) (*d
 }
 
 func (s *productService) FindByID(ctx context.Context, id int64) (*dto.ProductResponse, error) {
-	product, err := s.products.FindByID(ctx, id)
+	product, err := s.products.FindActiveByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -84,11 +87,14 @@ func (s *productService) List(ctx context.Context, query dto.ProductListQuery) (
 }
 
 func (s *productService) Update(ctx context.Context, id int64, req dto.ProductRequest) (*dto.ProductResponse, error) {
+	if err := validateProductRequest(req); err != nil {
+		return nil, err
+	}
 	if err := s.ensureActiveCategory(ctx, req.CategoryID); err != nil {
 		return nil, err
 	}
 
-	existing, err := s.products.FindByID(ctx, id)
+	existing, err := s.products.FindActiveByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -125,11 +131,11 @@ func (s *productService) Delete(ctx context.Context, id int64) error {
 }
 
 func (s *productService) ensureActiveCategory(ctx context.Context, categoryID int64) error {
-	category, err := s.categories.FindByID(ctx, categoryID)
+	category, err := s.categories.FindActiveByID(ctx, categoryID)
 	if err != nil {
 		return err
 	}
-	if category == nil || !category.IsActive {
+	if category == nil {
 		return apperror.BadRequest("Category is invalid or inactive")
 	}
 	return nil
@@ -142,6 +148,19 @@ func normalizeProductListQuery(query *dto.ProductListQuery) {
 	if query.Limit < 1 || query.Limit > 100 {
 		query.Limit = 10
 	}
+}
+
+func validateProductRequest(req dto.ProductRequest) error {
+	if req.Price < 0 {
+		return apperror.BadRequest("Product price must be greater than or equal to 0")
+	}
+	if req.Stock < 0 {
+		return apperror.BadRequest("Product stock must be greater than or equal to 0")
+	}
+	if req.CategoryID <= 0 {
+		return apperror.BadRequest("Category is required")
+	}
+	return nil
 }
 
 func productFromRequest(req dto.ProductRequest) *model.Product {

@@ -2,8 +2,11 @@ package repository
 
 import (
 	"context"
+	"fmt"
+	"strings"
 	"time"
 
+	"enterprise-order-management-api/internal/dto"
 	"enterprise-order-management-api/internal/model"
 
 	"github.com/jackc/pgx/v5"
@@ -14,10 +17,12 @@ type UserRepository interface {
 	Create(ctx context.Context, user *model.User) error
 	FindByEmail(ctx context.Context, email string) (*model.User, error)
 	FindByID(ctx context.Context, id int64) (*model.User, error)
-	List(ctx context.Context) ([]model.User, error)
+	List(ctx context.Context, query dto.UserListQuery) ([]model.User, int64, error)
+	ExistsByEmailOtherUser(ctx context.Context, email string, userID int64) (bool, error)
+	Update(ctx context.Context, user *model.User) error
 	SoftDelete(ctx context.Context, id int64) error
 	SaveRefreshToken(ctx context.Context, userID int64, tokenHash string, expiresAt time.Time) error
-	FindActiveRefreshToken(ctx context.Context, tokenHash string) (int64, error)
+	FindRefreshTokenByHash(ctx context.Context, tokenHash string) (*model.RefreshToken, error)
 	RevokeRefreshToken(ctx context.Context, tokenHash string) error
 }
 
@@ -62,17 +67,29 @@ func (r *userRepository) FindByID(ctx context.Context, id int64) (*model.User, e
 	return r.findOne(ctx, query, id)
 }
 
-func (r *userRepository) List(ctx context.Context) ([]model.User, error) {
-	query := `
+func (r *userRepository) List(ctx context.Context, query dto.UserListQuery) ([]model.User, int64, error) {
+	where, args := buildUserWhere(query)
+	offset := (query.Page - 1) * query.Limit
+
+	countSQL := "SELECT COUNT(*) FROM users u JOIN roles r ON r.id = u.role_id " + where
+	var total int64
+	if err := r.db.QueryRow(ctx, countSQL, args...).Scan(&total); err != nil {
+		return nil, 0, err
+	}
+
+	args = append(args, query.Limit, offset)
+	listSQL := fmt.Sprintf(`
 		SELECT u.id, u.full_name, u.email, u.password_hash, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
+		%s
 		ORDER BY u.created_at DESC
-	`
+		LIMIT $%d OFFSET $%d
+	`, where, len(args)-1, len(args))
 
-	rows, err := r.db.Query(ctx, query)
+	rows, err := r.db.Query(ctx, listSQL, args...)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	defer rows.Close()
 
@@ -80,11 +97,39 @@ func (r *userRepository) List(ctx context.Context) ([]model.User, error) {
 	for rows.Next() {
 		var user model.User
 		if err := scanUser(rows, &user); err != nil {
-			return nil, err
+			return nil, 0, err
 		}
 		users = append(users, user)
 	}
-	return users, rows.Err()
+	return users, total, rows.Err()
+}
+
+func (r *userRepository) ExistsByEmailOtherUser(ctx context.Context, email string, userID int64) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM users WHERE email = $1 AND id <> $2)`
+
+	var exists bool
+	err := r.db.QueryRow(ctx, query, email, userID).Scan(&exists)
+	return exists, err
+}
+
+func (r *userRepository) Update(ctx context.Context, user *model.User) error {
+	query := `
+		UPDATE users
+		SET full_name = $1,
+		    email = $2,
+		    role_id = (SELECT id FROM roles WHERE name = $3),
+		    updated_at = NOW()
+		WHERE id = $4 AND is_active = TRUE
+	`
+
+	commandTag, err := r.db.Exec(ctx, query, user.Name, user.Email, user.Role, user.ID)
+	if err != nil {
+		return err
+	}
+	if commandTag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }
 
 func (r *userRepository) SoftDelete(ctx context.Context, id int64) error {
@@ -105,25 +150,44 @@ func (r *userRepository) SaveRefreshToken(ctx context.Context, userID int64, tok
 	return err
 }
 
-func (r *userRepository) FindActiveRefreshToken(ctx context.Context, tokenHash string) (int64, error) {
+func (r *userRepository) FindRefreshTokenByHash(ctx context.Context, tokenHash string) (*model.RefreshToken, error) {
 	query := `
-		SELECT user_id
+		SELECT id, user_id, token_hash, expires_at, revoked_at, created_at
 		FROM refresh_tokens
-		WHERE token_hash = $1 AND revoked_at IS NULL AND expires_at > NOW()
+		WHERE token_hash = $1
 	`
 
-	var userID int64
-	err := r.db.QueryRow(ctx, query, tokenHash).Scan(&userID)
+	refreshToken := &model.RefreshToken{}
+	err := r.db.QueryRow(ctx, query, tokenHash).Scan(
+		&refreshToken.ID,
+		&refreshToken.UserID,
+		&refreshToken.TokenHash,
+		&refreshToken.ExpiresAt,
+		&refreshToken.RevokedAt,
+		&refreshToken.CreatedAt,
+	)
 	if err == pgx.ErrNoRows {
-		return 0, nil
+		return nil, nil
 	}
-	return userID, err
+	return refreshToken, err
 }
 
 func (r *userRepository) RevokeRefreshToken(ctx context.Context, tokenHash string) error {
 	query := `UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1 AND revoked_at IS NULL`
 	_, err := r.db.Exec(ctx, query, tokenHash)
 	return err
+}
+
+func buildUserWhere(query dto.UserListQuery) (string, []any) {
+	conditions := []string{"u.is_active = TRUE"}
+	args := make([]any, 0)
+
+	if query.Search != "" {
+		args = append(args, "%"+query.Search+"%")
+		conditions = append(conditions, fmt.Sprintf("(u.email ILIKE $%d OR u.full_name ILIKE $%d)", len(args), len(args)))
+	}
+
+	return "WHERE " + strings.Join(conditions, " AND "), args
 }
 
 func (r *userRepository) findOne(ctx context.Context, query string, args ...any) (*model.User, error) {

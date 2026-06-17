@@ -9,26 +9,49 @@ import (
 	"enterprise-order-management-api/internal/pkg/apperror"
 	"enterprise-order-management-api/internal/repository"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type OrderService interface {
 	Create(ctx context.Context, userID int64, req dto.CreateOrderRequest) (*dto.OrderResponse, error)
 	List(ctx context.Context, userID int64, role string) ([]dto.OrderResponse, error)
+	FindByID(ctx context.Context, orderID int64, userID int64, role string) (*dto.OrderResponse, error)
 	UpdateStatus(ctx context.Context, orderID int64, status string) (*dto.OrderResponse, error)
 }
 
 type orderService struct {
-	db     *pgxpool.Pool
-	orders repository.OrderRepository
+	db      repository.Queryer
+	txBegin txBeginner
+	orders  repository.OrderRepository
+}
+
+type txBeginner interface {
+	Begin(ctx context.Context) (repository.Tx, error)
+}
+
+type pgxPoolTxBeginner struct {
+	pool *pgxpool.Pool
+}
+
+func (b pgxPoolTxBeginner) Begin(ctx context.Context) (repository.Tx, error) {
+	return b.pool.Begin(ctx)
 }
 
 func NewOrderService(db *pgxpool.Pool, orders repository.OrderRepository) OrderService {
-	return &orderService{db: db, orders: orders}
+	return &orderService{
+		db:      db,
+		txBegin: pgxPoolTxBeginner{pool: db},
+		orders:  orders,
+	}
 }
 
 func (s *orderService) Create(ctx context.Context, userID int64, req dto.CreateOrderRequest) (*dto.OrderResponse, error) {
-	tx, err := s.db.Begin(ctx)
+	if len(req.Items) == 0 {
+		return nil, apperror.BadRequest("Order must have at least one item")
+	}
+
+	tx, err := s.txBegin.Begin(ctx)
 	if err != nil {
 		return nil, err
 	}
@@ -45,6 +68,13 @@ func (s *orderService) Create(ctx context.Context, userID int64, req dto.CreateO
 	var total int64
 
 	for productID, quantity := range quantities {
+		if productID <= 0 {
+			return nil, apperror.BadRequest("Product id must be greater than 0")
+		}
+		if quantity <= 0 {
+			return nil, apperror.BadRequest("Quantity must be greater than 0")
+		}
+
 		product, err := s.orders.FindProductForUpdate(ctx, tx, productID)
 		if err != nil {
 			return nil, err
@@ -82,6 +112,9 @@ func (s *orderService) Create(ctx context.Context, userID int64, req dto.CreateO
 			return nil, err
 		}
 		if err := s.orders.DecreaseStock(ctx, tx, orderItems[i].ProductID, orderItems[i].Quantity); err != nil {
+			if err == pgx.ErrNoRows {
+				return nil, apperror.BadRequest("Product does not have enough stock")
+			}
 			return nil, err
 		}
 	}
@@ -124,6 +157,28 @@ func (s *orderService) List(ctx context.Context, userID int64, role string) ([]d
 	return responses, nil
 }
 
+func (s *orderService) FindByID(ctx context.Context, orderID int64, userID int64, role string) (*dto.OrderResponse, error) {
+	order, err := s.orders.FindByID(ctx, s.db, orderID)
+	if err != nil {
+		return nil, err
+	}
+	if order == nil {
+		return nil, apperror.NotFound("Order not found")
+	}
+	if role != model.RoleAdmin && order.UserID != userID {
+		return nil, apperror.Forbidden("You cannot view another user's order")
+	}
+
+	items, err := s.orders.FindItemsByOrderID(ctx, s.db, order.ID)
+	if err != nil {
+		return nil, err
+	}
+	order.Items = items
+
+	res := ToOrderResponse(order)
+	return &res, nil
+}
+
 func (s *orderService) UpdateStatus(ctx context.Context, orderID int64, status string) (*dto.OrderResponse, error) {
 	order, err := s.orders.FindByID(ctx, s.db, orderID)
 	if err != nil {
@@ -152,6 +207,10 @@ func (s *orderService) UpdateStatus(ctx context.Context, orderID int64, status s
 }
 
 func canChangeOrderStatus(current string, next string) bool {
+	if !isValidOrderStatus(next) {
+		return false
+	}
+
 	allowed := map[string][]string{
 		model.OrderStatusPending:   {model.OrderStatusConfirmed, model.OrderStatusCancelled},
 		model.OrderStatusConfirmed: {model.OrderStatusShipping, model.OrderStatusCancelled},
@@ -164,6 +223,19 @@ func canChangeOrderStatus(current string, next string) bool {
 		}
 	}
 	return false
+}
+
+func isValidOrderStatus(status string) bool {
+	switch status {
+	case model.OrderStatusPending,
+		model.OrderStatusConfirmed,
+		model.OrderStatusShipping,
+		model.OrderStatusCompleted,
+		model.OrderStatusCancelled:
+		return true
+	default:
+		return false
+	}
 }
 
 func mergeOrderItems(items []dto.CreateOrderItemRequest) map[int64]int {

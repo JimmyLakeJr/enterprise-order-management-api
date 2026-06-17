@@ -15,6 +15,7 @@ import (
 type ProductRepository interface {
 	Create(ctx context.Context, product *model.Product) error
 	FindByID(ctx context.Context, id int64) (*model.Product, error)
+	FindActiveByID(ctx context.Context, id int64) (*model.Product, error)
 	List(ctx context.Context, query dto.ProductListQuery) ([]model.Product, int64, error)
 	Update(ctx context.Context, product *model.Product) error
 	SoftDelete(ctx context.Context, id int64) error
@@ -51,10 +52,25 @@ func (r *productRepository) FindByID(ctx context.Context, id int64) (*model.Prod
 		       c.id, c.name, c.description, c.is_active, c.created_at, c.updated_at
 		FROM products p
 		JOIN categories c ON c.id = p.category_id
-		WHERE p.id = $1 AND p.is_active = TRUE
+		WHERE p.id = $1
 	`
+	return r.findOne(ctx, query, id)
+}
+
+func (r *productRepository) FindActiveByID(ctx context.Context, id int64) (*model.Product, error) {
+	query := `
+		SELECT p.id, p.category_id, p.name, p.description, p.price, p.stock, p.image_url, p.is_active, p.created_at, p.updated_at,
+		       c.id, c.name, c.description, c.is_active, c.created_at, c.updated_at
+		FROM products p
+		JOIN categories c ON c.id = p.category_id
+		WHERE p.id = $1 AND p.is_active = TRUE AND c.is_active = TRUE
+	`
+	return r.findOne(ctx, query, id)
+}
+
+func (r *productRepository) findOne(ctx context.Context, query string, args ...any) (*model.Product, error) {
 	product := &model.Product{Category: &model.Category{}}
-	err := r.db.QueryRow(ctx, query, id).Scan(
+	err := r.db.QueryRow(ctx, query, args...).Scan(
 		&product.ID,
 		&product.CategoryID,
 		&product.Name,
@@ -122,7 +138,7 @@ func (r *productRepository) Update(ctx context.Context, product *model.Product) 
 		UPDATE products
 		SET category_id = $1, name = $2, description = $3, price = $4,
 		    stock = $5, image_url = $6, is_active = $7, updated_at = NOW()
-		WHERE id = $8
+		WHERE id = $8 AND is_active = TRUE
 	`
 	commandTag, err := r.db.Exec(ctx, query,
 		product.CategoryID,
@@ -144,7 +160,7 @@ func (r *productRepository) Update(ctx context.Context, product *model.Product) 
 }
 
 func (r *productRepository) SoftDelete(ctx context.Context, id int64) error {
-	query := `UPDATE products SET is_active = FALSE, updated_at = NOW() WHERE id = $1`
+	query := `UPDATE products SET is_active = FALSE, updated_at = NOW() WHERE id = $1 AND is_active = TRUE`
 	commandTag, err := r.db.Exec(ctx, query, id)
 	if err != nil {
 		return err

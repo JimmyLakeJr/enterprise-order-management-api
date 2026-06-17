@@ -16,11 +16,17 @@ type Queryer interface {
 	Exec(ctx context.Context, sql string, arguments ...any) (pgconn.CommandTag, error)
 }
 
+type Tx interface {
+	Queryer
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
+}
+
 type OrderRepository interface {
-	CreateOrder(ctx context.Context, tx pgx.Tx, order *model.Order) error
-	CreateOrderItem(ctx context.Context, tx pgx.Tx, item *model.OrderItem) error
-	FindProductForUpdate(ctx context.Context, tx pgx.Tx, productID int64) (*model.Product, error)
-	DecreaseStock(ctx context.Context, tx pgx.Tx, productID int64, quantity int) error
+	CreateOrder(ctx context.Context, tx Tx, order *model.Order) error
+	CreateOrderItem(ctx context.Context, tx Tx, item *model.OrderItem) error
+	FindProductForUpdate(ctx context.Context, tx Tx, productID int64) (*model.Product, error)
+	DecreaseStock(ctx context.Context, tx Tx, productID int64, quantity int) error
 	ListByUserID(ctx context.Context, db Queryer, userID int64) ([]model.Order, error)
 	ListAll(ctx context.Context, db Queryer) ([]model.Order, error)
 	FindByID(ctx context.Context, db Queryer, orderID int64) (*model.Order, error)
@@ -36,7 +42,7 @@ func NewOrderRepository(db *pgxpool.Pool) OrderRepository {
 	return &orderRepository{db: db}
 }
 
-func (r *orderRepository) CreateOrder(ctx context.Context, tx pgx.Tx, order *model.Order) error {
+func (r *orderRepository) CreateOrder(ctx context.Context, tx Tx, order *model.Order) error {
 	query := `
 		INSERT INTO orders (user_id, status, total_amount)
 		VALUES ($1, $2, $3)
@@ -46,7 +52,7 @@ func (r *orderRepository) CreateOrder(ctx context.Context, tx pgx.Tx, order *mod
 		Scan(&order.ID, &order.CreatedAt, &order.UpdatedAt)
 }
 
-func (r *orderRepository) CreateOrderItem(ctx context.Context, tx pgx.Tx, item *model.OrderItem) error {
+func (r *orderRepository) CreateOrderItem(ctx context.Context, tx Tx, item *model.OrderItem) error {
 	query := `
 		INSERT INTO order_items (order_id, product_id, quantity, unit_price, subtotal)
 		VALUES ($1, $2, $3, $4, $5)
@@ -56,7 +62,7 @@ func (r *orderRepository) CreateOrderItem(ctx context.Context, tx pgx.Tx, item *
 		Scan(&item.ID)
 }
 
-func (r *orderRepository) FindProductForUpdate(ctx context.Context, tx pgx.Tx, productID int64) (*model.Product, error) {
+func (r *orderRepository) FindProductForUpdate(ctx context.Context, tx Tx, productID int64) (*model.Product, error) {
 	query := `
 		SELECT id, category_id, name, description, price, stock, image_url, is_active, created_at, updated_at
 		FROM products
@@ -82,10 +88,20 @@ func (r *orderRepository) FindProductForUpdate(ctx context.Context, tx pgx.Tx, p
 	return product, err
 }
 
-func (r *orderRepository) DecreaseStock(ctx context.Context, tx pgx.Tx, productID int64, quantity int) error {
-	query := `UPDATE products SET stock = stock - $1, updated_at = NOW() WHERE id = $2`
-	_, err := tx.Exec(ctx, query, quantity, productID)
-	return err
+func (r *orderRepository) DecreaseStock(ctx context.Context, tx Tx, productID int64, quantity int) error {
+	query := `
+		UPDATE products
+		SET stock = stock - $1, updated_at = NOW()
+		WHERE id = $2 AND stock >= $1
+	`
+	commandTag, err := tx.Exec(ctx, query, quantity, productID)
+	if err != nil {
+		return err
+	}
+	if commandTag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
 }
 
 func (r *orderRepository) ListByUserID(ctx context.Context, db Queryer, userID int64) ([]model.Order, error) {

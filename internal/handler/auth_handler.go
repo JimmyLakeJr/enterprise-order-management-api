@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"enterprise-order-management-api/internal/dto"
+	appmiddleware "enterprise-order-management-api/internal/middleware"
 	"enterprise-order-management-api/internal/pkg/response"
 	"enterprise-order-management-api/internal/service"
 
@@ -79,4 +80,12 @@ func (h *AuthHandler) Logout(c echo.Context) error {
 		return err
 	}
 	return response.Message(c, http.StatusOK, "Logged out successfully")
+}
+
+func (h *AuthHandler) Me(c echo.Context) error {
+	res, err := h.auth.Me(c.Request().Context(), appmiddleware.CurrentUserID(c))
+	if err != nil {
+		return err
+	}
+	return response.OK(c, res)
 }

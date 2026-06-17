@@ -14,6 +14,7 @@ import (
 type CategoryService interface {
 	Create(ctx context.Context, req dto.CategoryRequest) (*dto.CategoryResponse, error)
 	List(ctx context.Context) ([]dto.CategoryResponse, error)
+	FindByID(ctx context.Context, id int64) (*dto.CategoryResponse, error)
 	Update(ctx context.Context, id int64, req dto.CategoryRequest) (*dto.CategoryResponse, error)
 	Delete(ctx context.Context, id int64) error
 }
@@ -27,6 +28,14 @@ func NewCategoryService(categories repository.CategoryRepository) CategoryServic
 }
 
 func (s *categoryService) Create(ctx context.Context, req dto.CategoryRequest) (*dto.CategoryResponse, error) {
+	exists, err := s.categories.ExistsByNameOtherCategory(ctx, req.Name, 0)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, apperror.Conflict("Category name already exists")
+	}
+
 	category := categoryFromRequest(req)
 	if err := s.categories.Create(ctx, category); err != nil {
 		return nil, err
@@ -47,13 +56,46 @@ func (s *categoryService) List(ctx context.Context) ([]dto.CategoryResponse, err
 	return res, nil
 }
 
+func (s *categoryService) FindByID(ctx context.Context, id int64) (*dto.CategoryResponse, error) {
+	category, err := s.categories.FindActiveByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if category == nil {
+		return nil, apperror.NotFound("Category not found")
+	}
+
+	res := ToCategoryResponse(category)
+	return &res, nil
+}
+
 func (s *categoryService) Update(ctx context.Context, id int64, req dto.CategoryRequest) (*dto.CategoryResponse, error) {
+	current, err := s.categories.FindActiveByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if current == nil {
+		return nil, apperror.NotFound("Category not found")
+	}
+
+	exists, err := s.categories.ExistsByNameOtherCategory(ctx, req.Name, id)
+	if err != nil {
+		return nil, err
+	}
+	if exists {
+		return nil, apperror.Conflict("Category name already exists")
+	}
+
 	category := categoryFromRequest(req)
 	category.ID = id
 	if err := s.categories.Update(ctx, category); err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, apperror.NotFound("Category not found")
 		}
+		return nil, err
+	}
+	category, err = s.categories.FindByID(ctx, id)
+	if err != nil {
 		return nil, err
 	}
 	res := ToCategoryResponse(category)

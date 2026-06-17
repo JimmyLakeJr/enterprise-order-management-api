@@ -1,24 +1,44 @@
-# enterprise-order-management-api
+# Enterprise Order Management API
 
-Backend API cho hệ thống quản lý sản phẩm và đơn hàng trong doanh nghiệp, xây dựng bằng Golang, Echo v4 và PostgreSQL.
+Backend API và frontend demo cho hệ thống quản lý sản phẩm và đơn hàng trong doanh nghiệp, xây dựng bằng Golang, Echo v4, PostgreSQL và React + Vite.
 
-## 1. Mục tiêu của bước
+Project phù hợp đồ án thực tập 2 tháng với trọng tâm là backend API, đồng thời có frontend đủ dùng để demo các flow chính: xem sản phẩm, giỏ hàng, tạo đơn hàng, xem đơn hàng và quản trị admin.
 
-Project tập trung vào backend API, phù hợp đồ án thực tập 2 tháng:
+## Công Nghệ
 
-- RESTful API bằng Golang 1.22+ và Echo v4.
-- PostgreSQL, SQL thuần với `pgx/v5` và `pgxpool`.
-- Không dùng ORM.
-- JWT access token và refresh token.
-- Refresh token được hash trước khi lưu database.
-- Logout revoke refresh token.
-- Role authorization: `admin`, `user`.
-- Product/category soft delete bằng `is_active = false`.
-- Tạo order có transaction, kiểm tra stock và trừ stock.
-- Response JSON thống nhất.
-- Docker Compose để chạy local.
+Backend:
 
-## 2. File/thư mục cần tạo
+- Golang 1.22+
+- Echo v4
+- PostgreSQL
+- SQL thuần với `pgx/v5` và `pgxpool`
+- JWT access token + refresh token
+- `github.com/golang-jwt/jwt/v5`
+- `golang.org/x/crypto/bcrypt`
+- `github.com/go-playground/validator/v10`
+- `.env`, `godotenv`, `os.Getenv`
+- Docker Compose
+
+Frontend:
+
+- React
+- Vite
+- React Router DOM
+- Axios
+- CSS thuần với CSS variables
+- LocalStorage cho demo auth token và cart
+
+Không dùng GORM, Fiber, MySQL, MongoDB hoặc ORM khác.
+
+## Kiến Trúc Backend
+
+Luồng xử lý chính:
+
+```text
+HTTP Request -> Handler -> Service -> Repository -> PostgreSQL
+```
+
+Các thư mục chính:
 
 ```text
 cmd/api/main.go
@@ -33,49 +53,23 @@ internal/pkg
 internal/repository
 internal/service
 migrations/001_init.sql
-docs/API.md
-docs/ERD.md
-docs/REQUIREMENTS.md
-.env.example
-Dockerfile
-docker-compose.yml
+docs
+frontend
 ```
 
-## 3. Code hoàn chỉnh
+Quy tắc:
 
-Code nằm trực tiếp trong project. Các file quan trọng:
+- Handler chỉ parse request, validate, gọi service và trả response.
+- Service xử lý business logic, authorization, transaction và status transition.
+- Repository thao tác database bằng SQL thuần, dùng parameterized query.
+- Không viết SQL trong handler.
+- Không trả `password_hash` ra response.
+- Tạo order phải dùng transaction.
+- Backend tự tính `total_amount`, không tin giá từ frontend.
 
-- `cmd/api/main.go`: chạy server.
-- `internal/config/config.go`: load `.env` bằng `godotenv` và `os.Getenv`.
-- `internal/database/postgres.go`: khởi tạo `pgxpool`.
-- `internal/http/server.go`: khai báo route, middleware, dependency wiring.
-- `internal/handler`: nhận request, validate, gọi service, trả response.
-- `internal/service`: xử lý business logic.
-- `internal/repository`: thao tác database bằng SQL thuần.
-- `internal/pkg/response`: chuẩn hóa success/error/pagination response.
-- `migrations/001_init.sql`: tạo bảng và seed role/admin/category.
-- `docs/ANALYSIS.md`: phân tích yêu cầu hệ thống.
-- `docs/ARCHITECTURE.md`: thiết kế kiến trúc tổng thể.
-- `docs/DATABASE_DESIGN.md`: thiết kế cơ sở dữ liệu.
+## Response Format
 
-## 4. Giải thích ngắn gọn
-
-Luồng xử lý:
-
-```text
-HTTP request -> Handler -> Service -> Repository -> PostgreSQL
-```
-
-Quy tắc tách lớp:
-
-- Handler không viết SQL.
-- Handler không xử lý business logic.
-- Service chứa nghiệp vụ: kiểm tra quyền, order transaction, status transition.
-- Repository chứa SQL thuần, dùng parameterized query.
-- Model ánh xạ database.
-- DTO định nghĩa request/response.
-
-Response chuẩn:
+Success:
 
 ```json
 {
@@ -85,15 +79,205 @@ Response chuẩn:
 }
 ```
 
-Order transaction:
+Error:
 
-- User gửi `product_id` và `quantity`.
-- Backend lấy giá từ database, không tin giá frontend.
-- Backend kiểm tra product active và stock đủ.
-- Backend tạo `orders`, `order_items`, trừ stock trong cùng transaction.
-- Có lỗi thì rollback toàn bộ.
+```json
+{
+  "success": false,
+  "message": "Validation failed",
+  "errors": {}
+}
+```
 
-## 5. Cách chạy/test
+Pagination:
+
+```json
+{
+  "success": true,
+  "message": "Success",
+  "data": [],
+  "meta": {
+    "page": 1,
+    "limit": 10,
+    "total": 0,
+    "total_pages": 0
+  }
+}
+```
+
+## Chức Năng Backend Chính
+
+Auth:
+
+- Register
+- Login
+- Refresh access token
+- Logout revoke refresh token
+- Password hash bằng bcrypt
+- Refresh token được hash trước khi lưu database
+
+Product và Category:
+
+- Guest xem danh mục, danh sách sản phẩm và chi tiết sản phẩm
+- Admin tạo, sửa, soft delete category/product
+- Product có category, price, stock, image URL và trạng thái active
+
+Order:
+
+- User đăng nhập mới được tạo order
+- Order item chỉ gửi `product_id` và `quantity`
+- Backend lấy `unit_price` từ database tại thời điểm đặt hàng
+- Kiểm tra product tồn tại, active và đủ stock
+- Tạo order, order_items và trừ stock trong cùng transaction
+- User chỉ xem order của mình
+- Admin xem toàn bộ order
+- Admin cập nhật trạng thái order
+
+Luồng trạng thái order:
+
+```text
+pending -> confirmed
+pending -> cancelled
+confirmed -> shipping
+confirmed -> cancelled
+shipping -> completed
+```
+
+## Frontend
+
+Frontend không chỉ là demo sơ sài. Đây là giao diện React + Vite có thể thao tác thật với backend cho các flow chính của hệ thống.
+
+### Layout Frontend
+
+Public layout:
+
+- Header store
+- Product list
+- Product detail
+- Login/Register
+- Cart link
+
+User layout:
+
+- Cart
+- My Orders
+- Order Detail
+- Profile
+- Logout
+
+Admin layout:
+
+- Sidebar admin
+- Header admin
+- Dashboard
+- Categories
+- Products
+- Orders
+- Users
+- Back to Store
+- Logout
+
+### Chức Năng Theo Role
+
+Guest:
+
+- Xem danh sách sản phẩm
+- Tìm kiếm/lọc sản phẩm
+- Xem chi tiết sản phẩm
+- Thêm sản phẩm vào giỏ local
+- Đăng ký
+- Đăng nhập
+
+User:
+
+- Có toàn bộ quyền Guest
+- Quản lý giỏ hàng
+- Cập nhật số lượng sản phẩm
+- Tạo đơn hàng
+- Xem đơn hàng của tôi
+- Xem chi tiết đơn hàng
+- Đăng xuất
+
+Admin:
+
+- Dashboard thống kê cơ bản
+- Quản lý danh mục
+- Quản lý sản phẩm
+- Quản lý đơn hàng
+- Cập nhật trạng thái đơn hàng đúng luồng
+- Quản lý user nếu backend user API được bật
+
+### Cấu Trúc Thư Mục Frontend
+
+```text
+frontend
+├── public
+├── src
+│   ├── api
+│   │   ├── apiClient.js
+│   │   ├── authApi.js
+│   │   ├── categoryApi.js
+│   │   ├── productApi.js
+│   │   ├── orderApi.js
+│   │   └── userApi.js
+│   ├── components
+│   │   ├── common
+│   │   └── products
+│   ├── contexts
+│   │   ├── AuthContext.jsx
+│   │   └── CartContext.jsx
+│   ├── hooks
+│   ├── layouts
+│   ├── pages
+│   │   ├── admin
+│   │   ├── auth
+│   │   ├── public
+│   │   └── user
+│   ├── routes
+│   ├── styles
+│   └── utils
+├── .env.example
+├── package.json
+└── vite.config.js
+```
+
+### Frontend API Base URL
+
+Frontend gọi backend qua biến môi trường:
+
+```text
+VITE_API_BASE_URL=http://localhost:8080/api/v1
+```
+
+File ví dụ:
+
+```text
+frontend/.env.example
+```
+
+Nội dung:
+
+```env
+VITE_API_BASE_URL=http://localhost:8080/api/v1
+```
+
+Nếu muốn test production build local, có thể tạo:
+
+```text
+frontend/.env.production
+```
+
+Ví dụ:
+
+```env
+VITE_API_BASE_URL=https://your-backend-domain.onrender.com/api/v1
+```
+
+Lưu ý: Vite chỉ expose biến môi trường có prefix `VITE_`.
+
+## Chạy Local
+
+### Backend
 
 Chạy bằng Docker Compose:
 
@@ -101,18 +285,12 @@ Chạy bằng Docker Compose:
 docker compose up --build
 ```
 
-Chạy local không dùng Docker:
+Hoặc chạy backend local:
 
 ```bash
 cp .env.example .env
 go mod tidy
 go run ./cmd/api
-```
-
-Chạy test:
-
-```bash
-go test ./...
 ```
 
 Health check:
@@ -121,16 +299,47 @@ Health check:
 curl http://localhost:8080/health
 ```
 
-Admin mặc định:
+Chạy test backend:
+
+```bash
+go test ./...
+```
+
+### Frontend
+
+```bash
+cd frontend
+cp .env.example .env
+npm install
+npm run dev
+```
+
+Mặc định Vite chạy tại:
+
+```text
+http://localhost:5173
+```
+
+Kiểm tra build local:
+
+```bash
+cd frontend
+npm run build
+npm run preview
+```
+
+`npm run preview` dùng để kiểm tra bản build production ở local trước khi deploy.
+
+## Tài Khoản Admin Mặc Định
 
 ```text
 email: admin@example.com
 password: 123456
 ```
 
-## 6. Ví dụ curl
+## Một Số API Ví Dụ
 
-Login admin:
+Login:
 
 ```bash
 curl -X POST http://localhost:8080/api/v1/auth/login \
@@ -138,36 +347,10 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
   -d '{"email":"admin@example.com","password":"123456"}'
 ```
 
-Tạo category:
+Xem sản phẩm:
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/admin/categories \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ACCESS_TOKEN" \
-  -d '{"name":"Electronics","description":"Electronic devices","is_active":true}'
-```
-
-Tạo product:
-
-```bash
-curl -X POST http://localhost:8080/api/v1/admin/products \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ACCESS_TOKEN" \
-  -d '{"category_id":1,"name":"Mechanical Keyboard","description":"Tenkeyless keyboard","price":1200000,"stock":20,"image_url":"https://example.com/keyboard.jpg","is_active":true}'
-```
-
-Xem product có phân trang/lọc:
-
-```bash
-curl "http://localhost:8080/api/v1/products?page=1&limit=10&search=keyboard&category_id=1"
-```
-
-Đăng ký user:
-
-```bash
-curl -X POST http://localhost:8080/api/v1/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"name":"Nguyen Van A","email":"user@example.com","password":"123456"}'
+curl "http://localhost:8080/api/v1/products?page=1&limit=12&keyword=&category_id=&min_price=&max_price="
 ```
 
 Tạo order:
@@ -182,61 +365,21 @@ curl -X POST http://localhost:8080/api/v1/orders \
 Admin cập nhật trạng thái order:
 
 ```bash
-curl -X PATCH http://localhost:8080/api/v1/orders/1/status \
+curl -X PUT http://localhost:8080/api/v1/orders/1/status \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer ACCESS_TOKEN" \
   -d '{"status":"confirmed"}'
 ```
 
-Logout:
+## Deploy Backend Và Database
 
-```bash
-curl -X POST http://localhost:8080/api/v1/auth/logout \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer ACCESS_TOKEN" \
-  -d '{"refresh_token":"REFRESH_TOKEN"}'
-```
+Gợi ý triển khai demo production:
 
-## 7. Lỗi thường gặp và cách sửa
+- Database: Supabase hoặc Neon PostgreSQL
+- Backend: Render
+- Frontend: Vercel
 
-`connection refused`
-
-- PostgreSQL chưa chạy.
-- Kiểm tra `docker compose up` hoặc `DATABASE_URL`.
-
-`Invalid access token`
-
-- Thiếu header `Authorization: Bearer ACCESS_TOKEN`.
-- Access token hết hạn, gọi `/auth/refresh`.
-
-`Refresh token was revoked or expired`
-
-- Refresh token đã logout, đã refresh trước đó, hoặc hết hạn.
-- Login lại để nhận token mới.
-
-`You do not have permission`
-
-- Tài khoản không phải admin nhưng gọi API `/admin/*`.
-
-`Product does not have enough stock`
-
-- Số lượng đặt lớn hơn tồn kho.
-- Giảm quantity hoặc tăng stock sản phẩm.
-
-`Invalid order status transition`
-
-- Chuyển trạng thái sai luồng.
-- Luồng đúng: `pending -> confirmed/cancelled`, `confirmed -> shipping/cancelled`, `shipping -> completed`.
-
-## 8. Deploy demo
-
-Gợi ý deploy:
-
-- Database: Supabase hoặc Neon PostgreSQL.
-- Backend: Render.
-- Frontend demo: Vercel.
-
-Khi deploy backend, cần cấu hình biến môi trường:
+Backend cần các biến môi trường:
 
 ```text
 PORT
@@ -248,11 +391,274 @@ ACCESS_TOKEN_MINUTES
 REFRESH_TOKEN_HOURS
 ```
 
-## 9. Tài liệu báo cáo
+`FRONTEND_URL` phải là domain frontend production, ví dụ:
 
-- Phân tích yêu cầu: `docs/ANALYSIS.md`
-- Kiến trúc tổng thể: `docs/ARCHITECTURE.md`
-- Thiết kế cơ sở dữ liệu: `docs/DATABASE_DESIGN.md`
+```text
+FRONTEND_URL=https://your-frontend-domain.vercel.app
+```
+
+Biến này dùng cho CORS để frontend trên Vercel gọi được backend trên Render.
+
+## Deploy Frontend React + Vite Lên Vercel
+
+### 1. Chuẩn Bị Frontend Trước Deploy
+
+Kiểm tra frontend chạy local:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Kiểm tra production build:
+
+```bash
+npm run build
+npm run preview
+```
+
+Đảm bảo các flow chính chạy được:
+
+- Home/product list
+- Product detail
+- Login/register
+- Cart
+- My orders
+- Admin dashboard
+- Admin products/orders
+
+### 2. Cấu Hình API URL
+
+Frontend dùng:
+
+```text
+VITE_API_BASE_URL=https://your-backend-domain.onrender.com/api/v1
+```
+
+Không dùng `localhost` trong production.
+
+Nếu muốn test local production build với backend Render, tạo file:
+
+```text
+frontend/.env.production
+```
+
+Nội dung ví dụ:
+
+```env
+VITE_API_BASE_URL=https://your-backend-domain.onrender.com/api/v1
+```
+
+### 3. Deploy Bằng GitHub + Vercel
+
+Các bước:
+
+1. Push code lên GitHub.
+2. Vào Vercel, chọn `Add New Project`.
+3. Import repository GitHub.
+4. Chọn thư mục frontend làm root:
+
+```text
+frontend
+```
+
+5. Framework Preset:
+
+```text
+Vite
+```
+
+6. Build Command:
+
+```text
+npm run build
+```
+
+7. Output Directory:
+
+```text
+dist
+```
+
+8. Thêm Environment Variable trên Vercel:
+
+```text
+VITE_API_BASE_URL=https://your-backend-domain.onrender.com/api/v1
+```
+
+9. Deploy.
+
+### 4. Cấu Hình CORS Backend
+
+Sau khi Vercel deploy xong, lấy domain frontend:
+
+```text
+https://your-frontend-domain.vercel.app
+```
+
+Trên Render backend, cấu hình:
+
+```text
+FRONTEND_URL=https://your-frontend-domain.vercel.app
+```
+
+Sau đó redeploy backend trên Render.
+
+### 5. Kiểm Tra Sau Deploy
+
+Kiểm tra theo thứ tự:
+
+1. Mở frontend Vercel.
+2. Trang home/product list tải được sản phẩm.
+3. Search/filter sản phẩm chạy được.
+4. Product detail chạy được.
+5. Register user mới.
+6. Login user.
+7. Thêm sản phẩm vào cart.
+8. Tạo order.
+9. Xem My Orders.
+10. Login admin.
+11. Vào Admin Dashboard.
+12. Quản lý category/product/order.
+13. Cập nhật trạng thái order.
+
+## Sửa Lỗi Reload Route Trên Vercel
+
+Nếu reload trực tiếp route như:
+
+```text
+https://your-frontend-domain.vercel.app/admin/orders/1
+```
+
+mà bị 404, thêm file:
+
+```text
+frontend/vercel.json
+```
+
+Nội dung:
+
+```json
+{
+  "rewrites": [
+    {
+      "source": "/(.*)",
+      "destination": "/index.html"
+    }
+  ]
+}
+```
+
+Sau đó commit, push và redeploy Vercel.
+
+## Lỗi Deploy Frontend Thường Gặp
+
+Frontend gọi nhầm localhost:
+
+- Nguyên nhân: `VITE_API_BASE_URL` trên Vercel chưa cấu hình hoặc vẫn là `http://localhost:8080/api/v1`.
+- Cách sửa: vào Vercel Project Settings -> Environment Variables, đặt lại `VITE_API_BASE_URL`.
+
+CORS error:
+
+- Nguyên nhân: backend Render chưa cho phép domain Vercel.
+- Cách sửa: cấu hình `FRONTEND_URL=https://your-frontend-domain.vercel.app` trên Render rồi redeploy backend.
+
+401 do token:
+
+- Nguyên nhân: token hết hạn, refresh token hết hạn hoặc JWT secret thay đổi sau deploy.
+- Cách sửa: logout, login lại; kiểm tra `JWT_ACCESS_SECRET`, `JWT_REFRESH_SECRET` trên Render.
+
+404 khi reload route React Router:
+
+- Nguyên nhân: Vercel không biết route client-side.
+- Cách sửa: thêm `frontend/vercel.json` với rewrite về `/index.html`.
+
+Env Vite không nhận:
+
+- Nguyên nhân: biến môi trường thiếu prefix `VITE_`.
+- Cách sửa: dùng `VITE_API_BASE_URL`, không dùng `API_BASE_URL`.
+
+Backend chưa bật HTTPS hoặc sai API URL:
+
+- Nguyên nhân: frontend HTTPS gọi backend HTTP hoặc URL thiếu `/api/v1`.
+- Cách sửa: dùng domain HTTPS của Render và đúng path `/api/v1`.
+
+## Ghi Chú Bảo Mật Frontend
+
+Bản demo hiện lưu access token, refresh token và cart trong `localStorage` để đơn giản, dễ hiểu và phù hợp đồ án thực tập.
+
+Với production thật nên cân nhắc:
+
+- Lưu refresh token bằng `httpOnly secure cookie`.
+- Giảm dữ liệu nhạy cảm lưu trong browser.
+- Cấu hình CORS chặt theo domain production.
+- Bật HTTPS cho toàn bộ frontend/backend.
+
+## Ảnh Demo
+
+Nếu có ảnh demo, nên đặt trong:
+
+```text
+docs/images
+```
+
+Gợi ý ảnh cần chụp:
+
+- Product list
+- Product detail
+- Cart
+- My orders
+- Admin dashboard
+- Admin product management
+- Admin order management
+
+Ví dụ nhúng ảnh trong README:
+
+```md
+![Product list](docs/images/product-list.png)
+![Admin dashboard](docs/images/admin-dashboard.png)
+```
+
+## Checklist Frontend Hoàn Thành
+
+- Product list hiển thị grid responsive.
+- Product detail có chọn số lượng.
+- Search/filter/pagination hoạt động.
+- Cart lưu localStorage.
+- Cart chặn quantity không hợp lệ.
+- Tạo order chỉ gửi `product_id` và `quantity`.
+- User xem được My Orders và Order Detail.
+- Admin route chỉ cho role admin.
+- Admin có sidebar, dashboard, table, form.
+- Admin quản lý category/product/order/user.
+- Admin cập nhật status order đúng flow.
+- Loading, error, empty state đầy đủ.
+- Format tiền VND.
+- Format ngày tháng rõ ràng.
+- Build production thành công bằng `npm run build`.
+- Deploy Vercel dùng đúng `VITE_API_BASE_URL`.
+- Backend Render cấu hình đúng `FRONTEND_URL`.
+
+## Checklist Deploy Frontend Thành Công
+
+- Backend Render hoạt động và có HTTPS.
+- Database Supabase/Neon đã migrate và seed dữ liệu cần thiết.
+- Frontend build local thành công.
+- Vercel root directory là `frontend`.
+- Vercel có biến `VITE_API_BASE_URL=https://your-backend-domain.onrender.com/api/v1`.
+- Render có biến `FRONTEND_URL=https://your-frontend-domain.vercel.app`.
+- Home/product list gọi API thành công.
+- Login/register thành công.
+- User tạo order thành công.
+- Admin truy cập dashboard thành công.
+- Reload route React Router không bị 404.
+
+## Tài Liệu
+
+- API docs: `docs/api.md`
 - ERD: `docs/ERD.md`
-- API docs: `docs/API.md`
-- Quy chuẩn project: `docs/PROJECT_STANDARDS.md`
+- Phân tích yêu cầu: `docs/ANALYSIS.md`
+- Kiến trúc: `docs/ARCHITECTURE.md`
+- Thiết kế database: `docs/DATABASE_DESIGN.md`
+- Quy chuẩn project: `AGENTS_P1.md`

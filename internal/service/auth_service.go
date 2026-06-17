@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"enterprise-order-management-api/internal/config"
 	"enterprise-order-management-api/internal/dto"
@@ -18,6 +19,7 @@ type AuthService interface {
 	Login(ctx context.Context, req dto.LoginRequest) (*dto.AuthResponse, error)
 	Refresh(ctx context.Context, refreshToken string) (*dto.AuthResponse, error)
 	Logout(ctx context.Context, refreshToken string) error
+	Me(ctx context.Context, userID int64) (*dto.UserResponse, error)
 }
 
 type authService struct {
@@ -76,12 +78,21 @@ func (s *authService) Refresh(ctx context.Context, refreshToken string) (*dto.Au
 	}
 
 	tokenHash := hasher.SHA256(refreshToken)
-	userID, err := s.users.FindActiveRefreshToken(ctx, tokenHash)
+	storedToken, err := s.users.FindRefreshTokenByHash(ctx, tokenHash)
 	if err != nil {
 		return nil, err
 	}
-	if userID == 0 || userID != claims.UserID {
-		return nil, apperror.Unauthorized("Refresh token was revoked or expired")
+	if storedToken == nil {
+		return nil, apperror.Unauthorized("Refresh token not found")
+	}
+	if storedToken.UserID != claims.UserID {
+		return nil, apperror.Unauthorized("Refresh token does not match user")
+	}
+	if storedToken.RevokedAt != nil {
+		return nil, apperror.Unauthorized("Refresh token was revoked")
+	}
+	if time.Now().After(storedToken.ExpiresAt) {
+		return nil, apperror.Unauthorized("Refresh token expired")
 	}
 
 	user, err := s.users.FindByID(ctx, claims.UserID)
@@ -100,7 +111,22 @@ func (s *authService) Refresh(ctx context.Context, refreshToken string) (*dto.Au
 }
 
 func (s *authService) Logout(ctx context.Context, refreshToken string) error {
+	if _, err := token.Parse(refreshToken, s.cfg.JWTRefreshSecret); err != nil {
+		return apperror.Unauthorized("Invalid refresh token")
+	}
 	return s.users.RevokeRefreshToken(ctx, hasher.SHA256(refreshToken))
+}
+
+func (s *authService) Me(ctx context.Context, userID int64) (*dto.UserResponse, error) {
+	user, err := s.users.FindByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, apperror.NotFound("User not found")
+	}
+	res := ToUserResponse(user)
+	return &res, nil
 }
 
 func (s *authService) issueTokens(ctx context.Context, user *model.User) (*dto.AuthResponse, error) {
@@ -130,9 +156,12 @@ func ToUserResponse(user *model.User) dto.UserResponse {
 		return dto.UserResponse{}
 	}
 	return dto.UserResponse{
-		ID:    user.ID,
-		Name:  user.Name,
-		Email: user.Email,
-		Role:  user.Role,
+		ID:        user.ID,
+		Name:      user.Name,
+		Email:     user.Email,
+		Role:      user.Role,
+		IsActive:  user.IsActive,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
 	}
 }

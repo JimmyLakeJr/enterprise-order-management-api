@@ -42,6 +42,19 @@ func (h *CategoryHandler) List(c echo.Context) error {
 	return response.OK(c, res)
 }
 
+func (h *CategoryHandler) FindByID(c echo.Context) error {
+	id, err := parseID(c.Param("id"))
+	if err != nil {
+		return err
+	}
+
+	res, err := h.categories.FindByID(c.Request().Context(), id)
+	if err != nil {
+		return err
+	}
+	return response.OK(c, res)
+}
+
 func (h *CategoryHandler) Update(c echo.Context) error {
 	id, err := parseID(c.Param("id"))
 	if err != nil {

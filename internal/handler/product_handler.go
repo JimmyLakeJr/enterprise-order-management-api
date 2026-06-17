@@ -53,7 +53,7 @@ func (h *ProductHandler) List(c echo.Context) error {
 	query := dto.ProductListQuery{
 		Page:       parseIntQuery(c, "page", 1),
 		Limit:      parseIntQuery(c, "limit", 10),
-		Search:     c.QueryParam("search"),
+		Search:     c.QueryParam("keyword"),
 		CategoryID: parseInt64Query(c, "category_id", 0),
 		MinPrice:   parseInt64Query(c, "min_price", 0),
 		MaxPrice:   parseInt64Query(c, "max_price", 0),

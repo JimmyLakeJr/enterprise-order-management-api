@@ -12,7 +12,9 @@ import (
 type CategoryRepository interface {
 	Create(ctx context.Context, category *model.Category) error
 	FindByID(ctx context.Context, id int64) (*model.Category, error)
+	FindActiveByID(ctx context.Context, id int64) (*model.Category, error)
 	ListActive(ctx context.Context) ([]model.Category, error)
+	ExistsByNameOtherCategory(ctx context.Context, name string, categoryID int64) (bool, error)
 	Update(ctx context.Context, category *model.Category) error
 	SoftDelete(ctx context.Context, id int64) error
 }
@@ -56,6 +58,15 @@ func (r *categoryRepository) FindByID(ctx context.Context, id int64) (*model.Cat
 	return category, err
 }
 
+func (r *categoryRepository) FindActiveByID(ctx context.Context, id int64) (*model.Category, error) {
+	query := `
+		SELECT id, name, description, is_active, created_at, updated_at
+		FROM categories
+		WHERE id = $1 AND is_active = TRUE
+	`
+	return r.findOne(ctx, query, id)
+}
+
 func (r *categoryRepository) ListActive(ctx context.Context) ([]model.Category, error) {
 	query := `
 		SELECT id, name, description, is_active, created_at, updated_at
@@ -88,11 +99,25 @@ func (r *categoryRepository) ListActive(ctx context.Context) ([]model.Category, 
 	return categories, rows.Err()
 }
 
+func (r *categoryRepository) ExistsByNameOtherCategory(ctx context.Context, name string, categoryID int64) (bool, error) {
+	query := `
+		SELECT EXISTS(
+			SELECT 1
+			FROM categories
+			WHERE LOWER(name) = LOWER($1) AND id <> $2
+		)
+	`
+
+	var exists bool
+	err := r.db.QueryRow(ctx, query, name, categoryID).Scan(&exists)
+	return exists, err
+}
+
 func (r *categoryRepository) Update(ctx context.Context, category *model.Category) error {
 	query := `
 		UPDATE categories
 		SET name = $1, description = $2, is_active = $3, updated_at = NOW()
-		WHERE id = $4
+		WHERE id = $4 AND is_active = TRUE
 	`
 	commandTag, err := r.db.Exec(ctx, query, category.Name, category.Description, category.IsActive, category.ID)
 	if err != nil {
@@ -105,7 +130,7 @@ func (r *categoryRepository) Update(ctx context.Context, category *model.Categor
 }
 
 func (r *categoryRepository) SoftDelete(ctx context.Context, id int64) error {
-	query := `UPDATE categories SET is_active = FALSE, updated_at = NOW() WHERE id = $1`
+	query := `UPDATE categories SET is_active = FALSE, updated_at = NOW() WHERE id = $1 AND is_active = TRUE`
 	commandTag, err := r.db.Exec(ctx, query, id)
 	if err != nil {
 		return err
@@ -114,4 +139,20 @@ func (r *categoryRepository) SoftDelete(ctx context.Context, id int64) error {
 		return pgx.ErrNoRows
 	}
 	return nil
+}
+
+func (r *categoryRepository) findOne(ctx context.Context, query string, args ...any) (*model.Category, error) {
+	category := &model.Category{}
+	err := r.db.QueryRow(ctx, query, args...).Scan(
+		&category.ID,
+		&category.Name,
+		&category.Description,
+		&category.IsActive,
+		&category.CreatedAt,
+		&category.UpdatedAt,
+	)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	return category, err
 }

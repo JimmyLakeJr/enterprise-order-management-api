@@ -1,8 +1,6 @@
 package http
 
 import (
-	"net/http"
-
 	"enterprise-order-management-api/internal/config"
 	"enterprise-order-management-api/internal/handler"
 	appmiddleware "enterprise-order-management-api/internal/middleware"
@@ -14,7 +12,6 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
 )
 
 func NewServer(db *pgxpool.Pool, cfg config.Config) *echo.Echo {
@@ -22,13 +19,9 @@ func NewServer(db *pgxpool.Pool, cfg config.Config) *echo.Echo {
 	e.Validator = appvalidator.New()
 	e.HTTPErrorHandler = response.ErrorHandler
 
-	e.Use(middleware.Logger())
-	e.Use(middleware.Recover())
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins: []string{cfg.FrontendURL},
-		AllowMethods: []string{http.MethodGet, http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete},
-		AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
-	}))
+	e.Use(appmiddleware.Logger())
+	e.Use(appmiddleware.Recovery())
+	e.Use(appmiddleware.CORS(cfg.FrontendURL))
 
 	userRepo := repository.NewUserRepository(db)
 	categoryRepo := repository.NewCategoryRepository(db)
@@ -53,32 +46,42 @@ func NewServer(db *pgxpool.Pool, cfg config.Config) *echo.Echo {
 
 	api := e.Group("/api/v1")
 
-	api.POST("/auth/register", authHandler.Register)
-	api.POST("/auth/login", authHandler.Login)
-	api.POST("/auth/refresh", authHandler.Refresh)
+	public := api.Group("")
+	public.POST("/auth/register", authHandler.Register)
+	public.POST("/auth/login", authHandler.Login)
+	public.POST("/auth/refresh-token", authHandler.Refresh)
 
-	api.GET("/categories", categoryHandler.List)
-	api.GET("/products", productHandler.List)
-	api.GET("/products/:id", productHandler.FindByID)
+	public.GET("/categories", categoryHandler.List)
+	public.GET("/categories/:id", categoryHandler.FindByID)
+	public.GET("/products", productHandler.List)
+	public.GET("/products/:id", productHandler.FindByID)
 
-	auth := api.Group("", appmiddleware.JWTAuth(cfg.JWTAccessSecret))
-	auth.POST("/auth/logout", authHandler.Logout)
-	auth.GET("/me", userHandler.Me)
+	userProtected := api.Group("", appmiddleware.JWTAuth(cfg.JWTAccessSecret))
+	userProtected.POST("/auth/logout", authHandler.Logout)
+	userProtected.GET("/auth/me", authHandler.Me)
+	userProtected.GET("/users/me/orders", orderHandler.MyOrders)
 
-	orders := auth.Group("/orders")
+	orders := userProtected.Group("/orders")
 	orders.POST("", orderHandler.Create)
 	orders.GET("", orderHandler.List)
-	orders.PATCH("/:id/status", orderHandler.UpdateStatus, appmiddleware.RequireRoles(model.RoleAdmin))
+	orders.GET("/:id", orderHandler.FindByID)
+	orders.PUT("/:id/status", orderHandler.UpdateStatus, appmiddleware.RequireRoles(model.RoleAdmin))
 
-	admin := auth.Group("/admin", appmiddleware.RequireRoles(model.RoleAdmin))
-	admin.GET("/users", userHandler.List)
-	admin.DELETE("/users/:id", userHandler.Delete)
-	admin.POST("/categories", categoryHandler.Create)
-	admin.PUT("/categories/:id", categoryHandler.Update)
-	admin.DELETE("/categories/:id", categoryHandler.Delete)
-	admin.POST("/products", productHandler.Create)
-	admin.PUT("/products/:id", productHandler.Update)
-	admin.DELETE("/products/:id", productHandler.Delete)
+	users := api.Group("/users", appmiddleware.JWTAuth(cfg.JWTAccessSecret), appmiddleware.RequireRoles(model.RoleAdmin))
+	users.GET("", userHandler.List)
+	users.GET("/:id", userHandler.FindByID)
+	users.PUT("/:id", userHandler.Update)
+	users.DELETE("/:id", userHandler.Delete)
+
+	categories := api.Group("/categories", appmiddleware.JWTAuth(cfg.JWTAccessSecret), appmiddleware.RequireRoles(model.RoleAdmin))
+	categories.POST("", categoryHandler.Create)
+	categories.PUT("/:id", categoryHandler.Update)
+	categories.DELETE("/:id", categoryHandler.Delete)
+
+	products := api.Group("/products", appmiddleware.JWTAuth(cfg.JWTAccessSecret), appmiddleware.RequireRoles(model.RoleAdmin))
+	products.POST("", productHandler.Create)
+	products.PUT("/:id", productHandler.Update)
+	products.DELETE("/:id", productHandler.Delete)
 
 	return e
 }

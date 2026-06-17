@@ -3,6 +3,7 @@ package handler
 import (
 	"enterprise-order-management-api/internal/dto"
 	appmiddleware "enterprise-order-management-api/internal/middleware"
+	"enterprise-order-management-api/internal/model"
 	"enterprise-order-management-api/internal/pkg/response"
 	"enterprise-order-management-api/internal/service"
 
@@ -36,6 +37,36 @@ func (h *OrderHandler) Create(c echo.Context) error {
 func (h *OrderHandler) List(c echo.Context) error {
 	res, err := h.orders.List(
 		c.Request().Context(),
+		appmiddleware.CurrentUserID(c),
+		appmiddleware.CurrentRole(c),
+	)
+	if err != nil {
+		return err
+	}
+	return response.OK(c, res)
+}
+
+func (h *OrderHandler) MyOrders(c echo.Context) error {
+	res, err := h.orders.List(
+		c.Request().Context(),
+		appmiddleware.CurrentUserID(c),
+		model.RoleUser,
+	)
+	if err != nil {
+		return err
+	}
+	return response.OK(c, res)
+}
+
+func (h *OrderHandler) FindByID(c echo.Context) error {
+	id, err := parseID(c.Param("id"))
+	if err != nil {
+		return err
+	}
+
+	res, err := h.orders.FindByID(
+		c.Request().Context(),
+		id,
 		appmiddleware.CurrentUserID(c),
 		appmiddleware.CurrentRole(c),
 	)
