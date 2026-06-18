@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { categoryApi } from "../../api/catalogApi";
+import { categoryApi } from "../../api/categoryApi";
 import { getMessage } from "../../api/apiClient";
 import Badge from "../../components/common/Badge";
 import Button from "../../components/common/Button";
@@ -9,6 +9,7 @@ import ErrorMessage from "../../components/common/ErrorMessage";
 import Input from "../../components/common/Input";
 import Loading from "../../components/common/Loading";
 import Table from "../../components/common/Table";
+import Textarea from "../../components/common/Textarea";
 
 const initialForm = {
   name: "",
@@ -131,10 +132,7 @@ export default function AdminCategoriesPage() {
         <ErrorMessage message={formError} />
         <form className="form-stack" onSubmit={handleSubmit}>
           <Input label="Name" name="name" value={form.name} onChange={handleChange} />
-          <label className="field">
-            <span>Description</span>
-            <textarea name="description" value={form.description} onChange={handleChange} />
-          </label>
+          <Textarea label="Description" name="description" value={form.description} onChange={handleChange} />
           <label className="checkbox-field">
             <input type="checkbox" name="is_active" checked={form.is_active} onChange={handleChange} />
             <span>Active</span>

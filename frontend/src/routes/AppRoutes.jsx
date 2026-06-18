@@ -26,6 +26,7 @@ export default function AppRoutes() {
     <Routes>
       <Route element={<PublicLayout />}>
         <Route index element={<ProductListPage />} />
+        <Route path="products" element={<ProductListPage />} />
         <Route path="products/:id" element={<ProductDetailPage />} />
         <Route path="cart" element={<CartPage />} />
         <Route path="login" element={<LoginPage />} />

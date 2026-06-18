@@ -10,13 +10,14 @@ import Input from "../../components/common/Input";
 import Loading from "../../components/common/Loading";
 import Select from "../../components/common/Select";
 import Table from "../../components/common/Table";
+import { ROLES } from "../../constants/domain";
 import { useAuth } from "../../contexts/AuthContext";
 import { formatDate } from "../../utils/format";
 
 const initialForm = {
   name: "",
   email: "",
-  role: "user",
+  role: ROLES.USER,
 };
 
 export default function AdminUsersPage() {
@@ -70,7 +71,7 @@ export default function AdminUsersPage() {
     setForm({
       name: user.name || "",
       email: user.email || "",
-      role: user.role || "user",
+      role: user.role || ROLES.USER,
     });
     setFormError("");
   }
@@ -136,8 +137,8 @@ export default function AdminUsersPage() {
               <Input label="Name" name="name" value={form.name} onChange={handleFormChange} />
               <Input label="Email" name="email" type="email" value={form.email} onChange={handleFormChange} />
               <Select label="Role" name="role" value={form.role} onChange={handleFormChange}>
-                <option value="user">user</option>
-                <option value="admin">admin</option>
+                <option value={ROLES.USER}>{ROLES.USER}</option>
+                <option value={ROLES.ADMIN}>{ROLES.ADMIN}</option>
               </Select>
             </div>
             <div className="actions">
@@ -177,7 +178,7 @@ export default function AdminUsersPage() {
               { key: "id", title: "ID" },
               { key: "name", title: "Name" },
               { key: "email", title: "Email" },
-              { key: "role", title: "Role", render: (user) => <Badge tone={user.role === "admin" ? "primary" : "default"}>{user.role}</Badge> },
+              { key: "role", title: "Role", render: (user) => <Badge tone={user.role === ROLES.ADMIN ? "primary" : "default"}>{user.role}</Badge> },
               {
                 key: "is_active",
                 title: "Active",

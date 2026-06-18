@@ -13,9 +13,7 @@ export async function getOrderById(id) {
 }
 
 export const orderApi = {
-  create: createOrder,
   list: async () => getData(await apiClient.get("/orders")),
-  myOrders: getMyOrders,
   detail: getOrderById,
   updateStatus: async (id, status) => getData(await apiClient.put(`/orders/${id}/status`, { status })),
 };

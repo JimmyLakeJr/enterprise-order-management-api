@@ -5,19 +5,9 @@ import Card from "../../components/common/Card";
 import ErrorMessage from "../../components/common/ErrorMessage";
 import Loading from "../../components/common/Loading";
 import Table from "../../components/common/Table";
+import { getOrderStatusTone } from "../../constants/domain";
 import { useAsync } from "../../hooks/useAsync";
-import { formatCurrency, formatDate } from "../../utils/format";
-
-function getStatusTone(status) {
-  const tones = {
-    pending: "warning",
-    confirmed: "primary",
-    shipping: "info",
-    completed: "success",
-    cancelled: "danger",
-  };
-  return tones[status] || "default";
-}
+import { formatCurrency } from "../../utils/format";
 
 export default function OrderDetailPage() {
   const { id } = useParams();
@@ -27,7 +17,7 @@ export default function OrderDetailPage() {
   if (error) return <ErrorMessage message={error} />;
   if (!order) return <ErrorMessage message="Không tìm thấy đơn hàng." />;
 
-  const items = order.items || order.order_items || [];
+  const items = order.items || [];
 
   return (
     <Card>
@@ -36,10 +26,9 @@ export default function OrderDetailPage() {
           <Link to="/my-orders" className="muted">
             Quay lại đơn hàng
           </Link>
-          <h1>Đơn hàng #{order.code || order.id}</h1>
+          <h1>Đơn hàng #{order.id}</h1>
           <div className="order-meta">
-            <Badge tone={getStatusTone(order.status)}>{order.status}</Badge>
-            {order.created_at && <span className="muted">{formatDate(order.created_at)}</span>}
+            <Badge tone={getOrderStatusTone(order.status)}>{order.status}</Badge>
           </div>
         </div>
         <strong className="cart-total">{formatCurrency(order.total_amount)}</strong>
@@ -52,7 +41,7 @@ export default function OrderDetailPage() {
           {
             key: "product",
             title: "Product",
-            render: (item) => item.name || item.product_name || item.product?.name || `#${item.product_id}`,
+            render: (item) => item.name || `Product #${item.product_id}`,
           },
           { key: "unit_price", title: "Unit Price", render: (item) => formatCurrency(item.unit_price) },
           { key: "quantity", title: "Quantity" },

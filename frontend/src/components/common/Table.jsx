@@ -1,7 +1,8 @@
-export default function Table({ columns, rows, getRowKey }) {
+export default function Table({ columns, rows, getRowKey, className = "", caption }) {
   return (
-    <div className="table-wrap">
+    <div className={`table-wrap ${className}`.trim()}>
       <table>
+        {caption && <caption>{caption}</caption>}
         <thead>
           <tr>
             {columns.map((column) => (

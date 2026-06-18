@@ -3,7 +3,7 @@ export default function EmptyState({
   description = "Dữ liệu sẽ hiển thị tại đây.",
 }) {
   return (
-    <div className="empty">
+    <div className="empty" role="status">
       <h3>{title}</h3>
       <p>{description}</p>
     </div>

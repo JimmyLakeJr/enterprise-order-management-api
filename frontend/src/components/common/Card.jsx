@@ -1,3 +1,3 @@
-export default function Card({ children, className = "" }) {
-  return <section className={`card ${className}`}>{children}</section>;
+export default function Card({ children, className = "", as: Component = "section", ...props }) {
+  return <Component className={`card ${className}`.trim()} {...props}>{children}</Component>;
 }

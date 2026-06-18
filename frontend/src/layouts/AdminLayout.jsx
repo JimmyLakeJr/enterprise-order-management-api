@@ -2,11 +2,12 @@ import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../contexts/AuthContext";
 
 const menuItems = [
-  { to: "/admin", label: "Dashboard", end: true },
+  { to: "/admin", label: "Admin Dashboard", end: true },
   { to: "/admin/categories", label: "Categories" },
   { to: "/admin/products", label: "Products" },
   { to: "/admin/orders", label: "Orders" },
   { to: "/admin/users", label: "Users" },
+  { to: "/profile", label: "Profile" },
 ];
 
 export default function AdminLayout() {

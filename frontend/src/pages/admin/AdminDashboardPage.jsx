@@ -1,26 +1,17 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { categoryApi, productApi } from "../../api/catalogApi";
 import { getMessage } from "../../api/apiClient";
+import { categoryApi } from "../../api/categoryApi";
 import { orderApi } from "../../api/orderApi";
+import { productApi } from "../../api/productApi";
 import { userApi } from "../../api/userApi";
 import Badge from "../../components/common/Badge";
 import Card from "../../components/common/Card";
 import ErrorMessage from "../../components/common/ErrorMessage";
 import Loading from "../../components/common/Loading";
 import Table from "../../components/common/Table";
-import { formatCurrency, formatDate } from "../../utils/format";
-
-function getStatusTone(status) {
-  const tones = {
-    pending: "warning",
-    confirmed: "primary",
-    shipping: "info",
-    completed: "success",
-    cancelled: "danger",
-  };
-  return tones[status] || "default";
-}
+import { getOrderStatusTone } from "../../constants/domain";
+import { formatCurrency } from "../../utils/format";
 
 export default function AdminDashboardPage() {
   const [stats, setStats] = useState({
@@ -115,10 +106,9 @@ export default function AdminDashboardPage() {
             rows={recentOrders}
             columns={[
               { key: "id", title: "Order", render: (order) => <Link to={`/admin/orders/${order.id}`}>#{order.id}</Link> },
-              { key: "user", title: "User", render: (order) => order.user?.email || order.user_id || "N/A" },
+              { key: "user", title: "User", render: (order) => `User #${order.user_id}` },
               { key: "total", title: "Total", render: (order) => formatCurrency(order.total_amount) },
-              { key: "status", title: "Status", render: (order) => <Badge tone={getStatusTone(order.status)}>{order.status}</Badge> },
-              { key: "created_at", title: "Created", render: (order) => formatDate(order.created_at) || "N/A" },
+              { key: "status", title: "Status", render: (order) => <Badge tone={getOrderStatusTone(order.status)}>{order.status}</Badge> },
             ]}
           />
         )}

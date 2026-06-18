@@ -1,11 +1,11 @@
-import { createContext, useContext, useMemo, useState } from "react";
+import { createContext, useContext, useState } from "react";
+import { STORAGE_KEYS } from "../constants/domain";
 
-const CART_STORAGE_KEY = "cart";
 const CartContext = createContext(null);
 
 function readCartFromStorage() {
   try {
-    const raw = localStorage.getItem(CART_STORAGE_KEY);
+    const raw = localStorage.getItem(STORAGE_KEYS.CART);
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
@@ -32,7 +32,7 @@ export function CartProvider({ children }) {
 
   function saveCart(nextItems) {
     setItems(nextItems);
-    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(nextItems));
+    localStorage.setItem(STORAGE_KEYS.CART, JSON.stringify(nextItems));
   }
 
   function addToCart(product, quantity = 1) {
@@ -84,22 +84,19 @@ export function CartProvider({ children }) {
   const totalAmount = getCartTotal();
   const totalItems = getCartCount();
 
-  const value = useMemo(
-    () => ({
-      items,
-      totalAmount,
-      totalItems,
-      addToCart,
-      updateQuantity,
-      removeFromCart,
-      clearCart,
-      getCartTotal,
-      getCartCount,
-      addItem: addToCart,
-      removeItem: removeFromCart,
-    }),
-    [items, totalAmount, totalItems]
-  );
+  const value = {
+    items,
+    totalAmount,
+    totalItems,
+    addToCart,
+    updateQuantity,
+    removeFromCart,
+    clearCart,
+    getCartTotal,
+    getCartCount,
+    addItem: addToCart,
+    removeItem: removeFromCart,
+  };
 
   return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }

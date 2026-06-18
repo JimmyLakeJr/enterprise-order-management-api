@@ -9,26 +9,8 @@ import ErrorMessage from "../../components/common/ErrorMessage";
 import Loading from "../../components/common/Loading";
 import Select from "../../components/common/Select";
 import Table from "../../components/common/Table";
-import { formatCurrency, formatDate } from "../../utils/format";
-
-const nextStatuses = {
-  pending: ["confirmed", "cancelled"],
-  confirmed: ["shipping", "cancelled"],
-  shipping: ["completed"],
-  completed: [],
-  cancelled: [],
-};
-
-function getStatusTone(status) {
-  const tones = {
-    pending: "warning",
-    confirmed: "primary",
-    shipping: "info",
-    completed: "success",
-    cancelled: "danger",
-  };
-  return tones[status] || "default";
-}
+import { getOrderStatusTone, ORDER_STATUSES, ORDER_STATUS_TRANSITIONS } from "../../constants/domain";
+import { formatCurrency } from "../../utils/format";
 
 export default function AdminOrdersPage() {
   const [orders, setOrders] = useState([]);
@@ -84,11 +66,9 @@ export default function AdminOrdersPage() {
         </div>
         <Select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
           <option value="all">All status</option>
-          <option value="pending">pending</option>
-          <option value="confirmed">confirmed</option>
-          <option value="shipping">shipping</option>
-          <option value="completed">completed</option>
-          <option value="cancelled">cancelled</option>
+          {ORDER_STATUSES.map((status) => (
+            <option key={status} value={status}>{status}</option>
+          ))}
         </Select>
       </div>
 
@@ -108,16 +88,15 @@ export default function AdminOrdersPage() {
             {
               key: "user",
               title: "User/Customer",
-              render: (order) => order.user?.email || order.customer_name || order.user_id || "N/A",
+              render: (order) => `User #${order.user_id}`,
             },
             { key: "total_amount", title: "Total", render: (order) => formatCurrency(order.total_amount) },
-            { key: "status", title: "Status", render: (order) => <Badge tone={getStatusTone(order.status)}>{order.status}</Badge> },
-            { key: "created_at", title: "Created At", render: (order) => formatDate(order.created_at) || "N/A" },
+            { key: "status", title: "Status", render: (order) => <Badge tone={getOrderStatusTone(order.status)}>{order.status}</Badge> },
             {
               key: "action",
               title: "Action",
               render: (order) => {
-                const options = nextStatuses[order.status] || [];
+                const options = ORDER_STATUS_TRANSITIONS[order.status] || [];
                 return (
                   <div className="actions">
                     <Link className="btn btn-secondary" to={`/admin/orders/${order.id}`}>

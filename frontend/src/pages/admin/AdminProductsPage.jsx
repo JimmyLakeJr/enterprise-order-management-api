@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { categoryApi, productApi } from "../../api/catalogApi";
 import { getMessage } from "../../api/apiClient";
+import { categoryApi } from "../../api/categoryApi";
+import { productApi } from "../../api/productApi";
 import Badge from "../../components/common/Badge";
 import Button from "../../components/common/Button";
 import Card from "../../components/common/Card";
@@ -10,6 +11,7 @@ import Input from "../../components/common/Input";
 import Loading from "../../components/common/Loading";
 import Select from "../../components/common/Select";
 import Table from "../../components/common/Table";
+import Textarea from "../../components/common/Textarea";
 import { formatCurrency } from "../../utils/format";
 
 const initialForm = {
@@ -27,7 +29,6 @@ const initialFilters = {
   limit: 10,
   keyword: "",
   category_id: "",
-  status: "all",
 };
 
 export default function AdminProductsPage() {
@@ -173,10 +174,6 @@ export default function AdminProductsPage() {
     setFilters(nextFilters);
   }
 
-  const visibleProducts =
-    filters.status === "all"
-      ? products
-      : products.filter((product) => String(Boolean(product.is_active)) === filters.status);
   const currentPage = meta?.page || filters.page;
   const totalPages = meta?.total_pages || 1;
 
@@ -220,10 +217,7 @@ export default function AdminProductsPage() {
             </div>
           )}
 
-          <label className="field">
-            <span>Description</span>
-            <textarea name="description" value={form.description} onChange={handleFormChange} />
-          </label>
+          <Textarea label="Description" name="description" value={form.description} onChange={handleFormChange} />
 
           <div className="actions">
             <Button type="submit" disabled={submitting}>
@@ -249,22 +243,17 @@ export default function AdminProductsPage() {
               </option>
             ))}
           </Select>
-          <Select name="status" value={filters.status} onChange={handleFilterChange}>
-            <option value="all">All status</option>
-            <option value="true">Active</option>
-            <option value="false">Inactive</option>
-          </Select>
           <Button type="submit">Filter</Button>
         </form>
 
         <ErrorMessage message={error} />
         {loading ? (
           <Loading />
-        ) : visibleProducts.length === 0 ? (
+        ) : products.length === 0 ? (
           <EmptyState title="Không có sản phẩm" description="Thử đổi filter hoặc tạo sản phẩm mới." />
         ) : (
           <Table
-            rows={visibleProducts}
+            rows={products}
             columns={[
               { key: "id", title: "ID" },
               { key: "name", title: "Name" },

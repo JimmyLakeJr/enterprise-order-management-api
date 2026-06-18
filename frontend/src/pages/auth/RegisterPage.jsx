@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getMessage } from "../../api/apiClient";
 import Button from "../../components/common/Button";
-import Card from "../../components/common/Card";
 import ErrorMessage from "../../components/common/ErrorMessage";
+import GlassCard from "../../components/common/GlassCard";
 import Input from "../../components/common/Input";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -50,21 +50,21 @@ export default function RegisterPage() {
 
   return (
     <div className="auth-shell">
-      <Card>
+      <GlassCard strong className="auth-card">
         <h1>Register</h1>
         <p className="muted">Create a user account for the demo client.</p>
         <ErrorMessage message={error} />
         <form className="form-stack" onSubmit={handleSubmit}>
-          <Input label="Full name" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
-          <Input label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-          <Input label="Password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-          <Input label="Confirm password" type="password" value={form.confirm_password} onChange={(e) => setForm({ ...form, confirm_password: e.target.value })} />
-          <Button disabled={loading}>{loading ? "Creating account..." : "Register"}</Button>
+          <Input label="Full name" autoComplete="name" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
+          <Input label="Email" type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          <Input label="Password" type="password" autoComplete="new-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+          <Input label="Confirm password" type="password" autoComplete="new-password" value={form.confirm_password} onChange={(e) => setForm({ ...form, confirm_password: e.target.value })} />
+          <Button type="submit" disabled={loading}>{loading ? "Creating account..." : "Register"}</Button>
         </form>
         <p className="muted">
           Already have an account? <Link to="/login">Login</Link>
         </p>
-      </Card>
+      </GlassCard>
     </div>
   );
 }

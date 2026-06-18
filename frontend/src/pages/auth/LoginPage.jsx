@@ -2,9 +2,10 @@ import { useState } from "react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { getMessage } from "../../api/apiClient";
 import Button from "../../components/common/Button";
-import Card from "../../components/common/Card";
 import ErrorMessage from "../../components/common/ErrorMessage";
+import GlassCard from "../../components/common/GlassCard";
 import Input from "../../components/common/Input";
+import { ROLES } from "../../constants/domain";
 import { useAuth } from "../../contexts/AuthContext";
 
 export default function LoginPage() {
@@ -33,7 +34,7 @@ export default function LoginPage() {
 
     try {
       const data = await login(form);
-      const redirectTo = location.state?.from || (data.user?.role === "admin" ? "/admin" : "/");
+      const redirectTo = location.state?.from || (data.user?.role === ROLES.ADMIN ? "/admin" : "/");
       navigate(redirectTo, { replace: true });
     } catch (err) {
       setError(getMessage(err));
@@ -42,19 +43,19 @@ export default function LoginPage() {
 
   return (
     <div className="auth-shell">
-      <Card>
+      <GlassCard strong className="auth-card">
         <h1>Login</h1>
         <p className="muted">Sign in to create orders and manage your account.</p>
         <ErrorMessage message={error} />
         <form className="form-stack" onSubmit={handleSubmit}>
-          <Input label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-          <Input label="Password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-          <Button disabled={loading}>{loading ? "Logging in..." : "Login"}</Button>
+          <Input label="Email" type="email" autoComplete="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+          <Input label="Password" type="password" autoComplete="current-password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
+          <Button type="submit" disabled={loading}>{loading ? "Logging in..." : "Login"}</Button>
         </form>
         <p className="muted">
           Do not have an account? <Link to="/register">Register</Link>
         </p>
-      </Card>
+      </GlassCard>
     </div>
   );
 }

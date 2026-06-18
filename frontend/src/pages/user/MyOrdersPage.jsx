@@ -6,19 +6,9 @@ import EmptyState from "../../components/common/EmptyState";
 import ErrorMessage from "../../components/common/ErrorMessage";
 import Loading from "../../components/common/Loading";
 import Table from "../../components/common/Table";
+import { getOrderStatusTone } from "../../constants/domain";
 import { useAsync } from "../../hooks/useAsync";
-import { formatCurrency, formatDate } from "../../utils/format";
-
-function getStatusTone(status) {
-  const tones = {
-    pending: "warning",
-    confirmed: "primary",
-    shipping: "info",
-    completed: "success",
-    cancelled: "danger",
-  };
-  return tones[status] || "default";
-}
+import { formatCurrency } from "../../utils/format";
 
 export default function MyOrdersPage() {
   const { data: orders, loading, error } = useAsync(getMyOrders, []);
@@ -42,7 +32,7 @@ export default function MyOrdersPage() {
           {
             key: "id",
             title: "Order",
-            render: (order) => <Link to={`/orders/${order.id}`}>#{order.code || order.id}</Link>,
+            render: (order) => <Link to={`/orders/${order.id}`}>#{order.id}</Link>,
           },
           {
             key: "total_amount",
@@ -52,12 +42,7 @@ export default function MyOrdersPage() {
           {
             key: "status",
             title: "Status",
-            render: (order) => <Badge tone={getStatusTone(order.status)}>{order.status}</Badge>,
-          },
-          {
-            key: "created_at",
-            title: "Created At",
-            render: (order) => formatDate(order.created_at),
+            render: (order) => <Badge tone={getOrderStatusTone(order.status)}>{order.status}</Badge>,
           },
           {
             key: "action",

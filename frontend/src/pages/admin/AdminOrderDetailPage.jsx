@@ -9,26 +9,8 @@ import ErrorMessage from "../../components/common/ErrorMessage";
 import Loading from "../../components/common/Loading";
 import Select from "../../components/common/Select";
 import Table from "../../components/common/Table";
-import { formatCurrency, formatDate } from "../../utils/format";
-
-const nextStatuses = {
-  pending: ["confirmed", "cancelled"],
-  confirmed: ["shipping", "cancelled"],
-  shipping: ["completed"],
-  completed: [],
-  cancelled: [],
-};
-
-function getStatusTone(status) {
-  const tones = {
-    pending: "warning",
-    confirmed: "primary",
-    shipping: "info",
-    completed: "success",
-    cancelled: "danger",
-  };
-  return tones[status] || "default";
-}
+import { getOrderStatusTone, ORDER_STATUS_TRANSITIONS } from "../../constants/domain";
+import { formatCurrency } from "../../utils/format";
 
 export default function AdminOrderDetailPage() {
   const { id } = useParams();
@@ -76,8 +58,8 @@ export default function AdminOrderDetailPage() {
   if (error && !order) return <ErrorMessage message={error} />;
   if (!order) return <ErrorMessage message="Không tìm thấy đơn hàng." />;
 
-  const items = order.items || order.order_items || [];
-  const availableStatuses = nextStatuses[order.status] || [];
+  const items = order.items || [];
+  const availableStatuses = ORDER_STATUS_TRANSITIONS[order.status] || [];
 
   return (
     <div className="grid">
@@ -89,8 +71,7 @@ export default function AdminOrderDetailPage() {
             </Link>
             <h1>Order #{order.id}</h1>
             <div className="order-meta">
-              <Badge tone={getStatusTone(order.status)}>{order.status}</Badge>
-              {order.created_at && <span className="muted">{formatDate(order.created_at)}</span>}
+              <Badge tone={getOrderStatusTone(order.status)}>{order.status}</Badge>
             </div>
           </div>
           <strong className="cart-total">{formatCurrency(order.total_amount)}</strong>
@@ -101,7 +82,7 @@ export default function AdminOrderDetailPage() {
         <div className="order-info-grid">
           <div>
             <span className="muted">User/Customer</span>
-            <strong>{order.user?.email || order.customer_name || `User #${order.user_id}`}</strong>
+            <strong>User #{order.user_id}</strong>
           </div>
           <div>
             <span className="muted">Total Amount</span>
@@ -141,7 +122,7 @@ export default function AdminOrderDetailPage() {
             {
               key: "product",
               title: "Product",
-              render: (item) => item.name || item.product_name || item.product?.name || `#${item.product_id}`,
+              render: (item) => item.name || `Product #${item.product_id}`,
             },
             { key: "unit_price", title: "Unit Price", render: (item) => formatCurrency(item.unit_price) },
             { key: "quantity", title: "Quantity" },
