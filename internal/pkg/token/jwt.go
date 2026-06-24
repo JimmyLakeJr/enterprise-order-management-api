@@ -1,6 +1,8 @@
 package token
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -15,14 +17,21 @@ type Claims struct {
 }
 
 func Generate(userID int64, email string, role string, secret string, expiresIn time.Duration) (string, time.Time, error) {
-	expiresAt := time.Now().Add(expiresIn)
+	now := time.Now()
+	expiresAt := now.Add(expiresIn)
+	tokenID, err := generateTokenID()
+	if err != nil {
+		return "", time.Time{}, err
+	}
+
 	claims := Claims{
 		UserID: userID,
 		Email:  email,
 		Role:   role,
 		RegisteredClaims: jwt.RegisteredClaims{
+			ID:        tokenID,
 			ExpiresAt: jwt.NewNumericDate(expiresAt),
-			IssuedAt:  jwt.NewNumericDate(time.Now()),
+			IssuedAt:  jwt.NewNumericDate(now),
 		},
 	}
 
@@ -52,4 +61,12 @@ func Parse(rawToken string, secret string) (*Claims, error) {
 	}
 
 	return claims, nil
+}
+
+func generateTokenID() (string, error) {
+	var raw [16]byte
+	if _, err := rand.Read(raw[:]); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(raw[:]), nil
 }

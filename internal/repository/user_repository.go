@@ -15,11 +15,17 @@ import (
 
 type UserRepository interface {
 	Create(ctx context.Context, user *model.User) error
+	CreateWithQuerier(ctx context.Context, q Queryer, user *model.User) error
 	FindByEmail(ctx context.Context, email string) (*model.User, error)
+	FindByEmailAny(ctx context.Context, email string) (*model.User, error)
 	FindByID(ctx context.Context, id int64) (*model.User, error)
+	FindByIDAny(ctx context.Context, id int64) (*model.User, error)
 	List(ctx context.Context, query dto.UserListQuery) ([]model.User, int64, error)
 	ExistsByEmailOtherUser(ctx context.Context, email string, userID int64) (bool, error)
 	Update(ctx context.Context, user *model.User) error
+	UpdateProfileName(ctx context.Context, id int64, name string) error
+	UpdateAvatarURL(ctx context.Context, id int64, avatarURL string) error
+	UpdateProfileVideoURL(ctx context.Context, id int64, profileVideoURL string) error
 	SoftDelete(ctx context.Context, id int64) error
 	SaveRefreshToken(ctx context.Context, userID int64, tokenHash string, expiresAt time.Time) error
 	FindRefreshTokenByHash(ctx context.Context, tokenHash string) (*model.RefreshToken, error)
@@ -35,19 +41,23 @@ func NewUserRepository(db *pgxpool.Pool) UserRepository {
 }
 
 func (r *userRepository) Create(ctx context.Context, user *model.User) error {
+	return r.CreateWithQuerier(ctx, r.db, user)
+}
+
+func (r *userRepository) CreateWithQuerier(ctx context.Context, q Queryer, user *model.User) error {
 	query := `
-		INSERT INTO users (full_name, email, password_hash, role_id)
-		VALUES ($1, $2, $3, (SELECT id FROM roles WHERE name = $4))
+		INSERT INTO users (full_name, email, password_hash, avatar_url, profile_video_url, role_id)
+		VALUES ($1, $2, $3, $4, $5, (SELECT id FROM roles WHERE name = $6))
 		RETURNING id, role_id, is_active, created_at, updated_at
 	`
 
-	return r.db.QueryRow(ctx, query, user.Name, user.Email, user.PasswordHash, model.RoleUser).
+	return q.QueryRow(ctx, query, user.Name, user.Email, user.PasswordHash, user.AvatarURL, user.ProfileVideoURL, user.Role).
 		Scan(&user.ID, &user.RoleID, &user.IsActive, &user.CreatedAt, &user.UpdatedAt)
 }
 
 func (r *userRepository) FindByEmail(ctx context.Context, email string) (*model.User, error) {
 	query := `
-		SELECT u.id, u.full_name, u.email, u.password_hash, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
+		SELECT u.id, u.full_name, u.email, u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
 		WHERE u.email = $1 AND u.is_active = TRUE
@@ -56,12 +66,34 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*model.
 	return r.findOne(ctx, query, email)
 }
 
+func (r *userRepository) FindByEmailAny(ctx context.Context, email string) (*model.User, error) {
+	query := `
+		SELECT u.id, u.full_name, u.email, u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
+		FROM users u
+		JOIN roles r ON r.id = u.role_id
+		WHERE u.email = $1
+	`
+
+	return r.findOne(ctx, query, email)
+}
+
 func (r *userRepository) FindByID(ctx context.Context, id int64) (*model.User, error) {
 	query := `
-		SELECT u.id, u.full_name, u.email, u.password_hash, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
+		SELECT u.id, u.full_name, u.email, u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
 		WHERE u.id = $1 AND u.is_active = TRUE
+	`
+
+	return r.findOne(ctx, query, id)
+}
+
+func (r *userRepository) FindByIDAny(ctx context.Context, id int64) (*model.User, error) {
+	query := `
+		SELECT u.id, u.full_name, u.email, u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
+		FROM users u
+		JOIN roles r ON r.id = u.role_id
+		WHERE u.id = $1
 	`
 
 	return r.findOne(ctx, query, id)
@@ -79,7 +111,7 @@ func (r *userRepository) List(ctx context.Context, query dto.UserListQuery) ([]m
 
 	args = append(args, query.Limit, offset)
 	listSQL := fmt.Sprintf(`
-		SELECT u.id, u.full_name, u.email, u.password_hash, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
+		SELECT u.id, u.full_name, u.email, u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
 		%s
@@ -123,6 +155,42 @@ func (r *userRepository) Update(ctx context.Context, user *model.User) error {
 	`
 
 	commandTag, err := r.db.Exec(ctx, query, user.Name, user.Email, user.Role, user.ID)
+	if err != nil {
+		return err
+	}
+	if commandTag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (r *userRepository) UpdateProfileName(ctx context.Context, id int64, name string) error {
+	query := `UPDATE users SET full_name = $1, updated_at = NOW() WHERE id = $2 AND is_active = TRUE`
+	commandTag, err := r.db.Exec(ctx, query, name, id)
+	if err != nil {
+		return err
+	}
+	if commandTag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (r *userRepository) UpdateAvatarURL(ctx context.Context, id int64, avatarURL string) error {
+	query := `UPDATE users SET avatar_url = $1, updated_at = NOW() WHERE id = $2 AND is_active = TRUE`
+	commandTag, err := r.db.Exec(ctx, query, avatarURL, id)
+	if err != nil {
+		return err
+	}
+	if commandTag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (r *userRepository) UpdateProfileVideoURL(ctx context.Context, id int64, profileVideoURL string) error {
+	query := `UPDATE users SET profile_video_url = $1, updated_at = NOW() WHERE id = $2 AND is_active = TRUE`
+	commandTag, err := r.db.Exec(ctx, query, profileVideoURL, id)
 	if err != nil {
 		return err
 	}
@@ -197,6 +265,8 @@ func (r *userRepository) findOne(ctx context.Context, query string, args ...any)
 		&user.Name,
 		&user.Email,
 		&user.PasswordHash,
+		&user.AvatarURL,
+		&user.ProfileVideoURL,
 		&user.RoleID,
 		&user.Role,
 		&user.IsActive,
@@ -215,6 +285,8 @@ func scanUser(rows pgx.Rows, user *model.User) error {
 		&user.Name,
 		&user.Email,
 		&user.PasswordHash,
+		&user.AvatarURL,
+		&user.ProfileVideoURL,
 		&user.RoleID,
 		&user.Role,
 		&user.IsActive,

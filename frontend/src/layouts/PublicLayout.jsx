@@ -9,7 +9,7 @@ export default function PublicLayout() {
         <Outlet />
       </main>
       <footer className="footer">
-        <div className="container">Enterprise product and order management demo.</div>
+        <div className="container">Hệ thống quản lý sản phẩm và đơn hàng doanh nghiệp.</div>
       </footer>
     </>
   );

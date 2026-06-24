@@ -1,7 +1,8 @@
 import axios from "axios";
 import { AUTH_EVENTS, STORAGE_KEYS } from "../constants/domain";
 
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api/v1").replace(/\/$/, "");
+export const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || "http://localhost:8080/api/v1").replace(/\/$/, "");
+export const API_ORIGIN = new URL(API_BASE_URL).origin;
 
 const AUTH_ENDPOINTS_WITHOUT_REFRESH = [
   "/auth/register",

@@ -35,27 +35,41 @@ func (h *OrderHandler) Create(c echo.Context) error {
 }
 
 func (h *OrderHandler) List(c echo.Context) error {
-	res, err := h.orders.List(
+	query := dto.OrderListQuery{
+		Page:   parseIntQuery(c, "page", 1),
+		Limit:  parseIntQuery(c, "limit", 10),
+		Status: c.QueryParam("status"),
+	}
+
+	res, meta, err := h.orders.List(
 		c.Request().Context(),
 		appmiddleware.CurrentUserID(c),
 		appmiddleware.CurrentRole(c),
+		query,
 	)
 	if err != nil {
 		return err
 	}
-	return response.OK(c, res)
+	return response.Paginated(c, res, meta)
 }
 
 func (h *OrderHandler) MyOrders(c echo.Context) error {
-	res, err := h.orders.List(
+	query := dto.OrderListQuery{
+		Page:   parseIntQuery(c, "page", 1),
+		Limit:  parseIntQuery(c, "limit", 10),
+		Status: c.QueryParam("status"),
+	}
+
+	res, meta, err := h.orders.List(
 		c.Request().Context(),
 		appmiddleware.CurrentUserID(c),
 		model.RoleUser,
+		query,
 	)
 	if err != nil {
 		return err
 	}
-	return response.OK(c, res)
+	return response.Paginated(c, res, meta)
 }
 
 func (h *OrderHandler) FindByID(c echo.Context) error {

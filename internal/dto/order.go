@@ -1,5 +1,7 @@
 package dto
 
+import "time"
+
 type CreateOrderRequest struct {
 	Items []CreateOrderItemRequest `json:"items" validate:"required,min=1,dive"`
 }
@@ -14,11 +16,26 @@ type OrderResponse struct {
 	UserID      int64               `json:"user_id"`
 	Status      string              `json:"status"`
 	TotalAmount int64               `json:"total_amount"`
+	CreatedAt   time.Time           `json:"created_at"`
+	UpdatedAt   time.Time           `json:"updated_at"`
+	User        *OrderUserSummary   `json:"user,omitempty"`
 	Items       []OrderItemResponse `json:"items"`
+}
+
+type OrderUserSummary struct {
+	ID    int64  `json:"id"`
+	Name  string `json:"name"`
+	Email string `json:"email"`
 }
 
 type UpdateOrderStatusRequest struct {
 	Status string `json:"status" validate:"required,oneof=pending confirmed shipping completed cancelled"`
+}
+
+type OrderListQuery struct {
+	Page   int
+	Limit  int
+	Status string
 }
 
 type OrderItemResponse struct {

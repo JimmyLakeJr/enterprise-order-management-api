@@ -12,6 +12,7 @@ FROM alpine:3.23
 
 WORKDIR /app
 COPY --from=builder /app/server /app/server
+RUN mkdir -p /app/uploads
 
 EXPOSE 8080
 

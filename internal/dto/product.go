@@ -6,7 +6,7 @@ type ProductRequest struct {
 	Description string `json:"description" validate:"max=1000"`
 	Price       int64  `json:"price" validate:"gte=0"`
 	Stock       int    `json:"stock" validate:"gte=0"`
-	ImageURL    string `json:"image_url" validate:"omitempty,url,max=1000"`
+	ImageURL    string `json:"image_url" validate:"max=1000"`
 	IsActive    *bool  `json:"is_active"`
 }
 
@@ -29,4 +29,6 @@ type ProductListQuery struct {
 	CategoryID int64
 	MinPrice   int64
 	MaxPrice   int64
+	Status     string
+	Admin      bool
 }

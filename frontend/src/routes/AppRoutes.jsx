@@ -4,6 +4,7 @@ import PublicLayout from "../layouts/PublicLayout";
 import UserLayout from "../layouts/UserLayout";
 import LoginPage from "../pages/auth/LoginPage";
 import RegisterPage from "../pages/auth/RegisterPage";
+import GoogleAuthCallbackPage from "../pages/auth/GoogleAuthCallbackPage";
 import AdminCategoriesPage from "../pages/admin/AdminCategoriesPage";
 import AdminDashboardPage from "../pages/admin/AdminDashboardPage";
 import AdminOrderDetailPage from "../pages/admin/AdminOrderDetailPage";
@@ -31,6 +32,7 @@ export default function AppRoutes() {
         <Route path="cart" element={<CartPage />} />
         <Route path="login" element={<LoginPage />} />
         <Route path="register" element={<RegisterPage />} />
+        <Route path="auth/google/callback" element={<GoogleAuthCallbackPage />} />
         <Route path="forbidden" element={<ForbiddenPage />} />
       </Route>
 

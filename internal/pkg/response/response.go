@@ -3,11 +3,11 @@ package response
 import (
 	"errors"
 	"net/http"
-	"strings"
 
 	"enterprise-order-management-api/internal/pkg/apperror"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/labstack/echo/v4"
 )
 
@@ -75,6 +75,17 @@ func ErrorHandler(err error, c echo.Context) {
 		return
 	}
 
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) {
+		appErr := mapDatabaseError(pgErr)
+		_ = c.JSON(appErr.StatusCode, Body{
+			Success: false,
+			Message: appErr.Message,
+			Errors:  map[string]string{"code": appErr.Code},
+		})
+		return
+	}
+
 	if echoErr, ok := err.(*echo.HTTPError); ok {
 		_ = c.JSON(echoErr.Code, Body{
 			Success: false,
@@ -94,8 +105,21 @@ func ErrorHandler(err error, c echo.Context) {
 func formatValidationErrors(validationErrors validator.ValidationErrors) map[string]string {
 	result := make(map[string]string, len(validationErrors))
 	for _, fieldErr := range validationErrors {
-		field := strings.ToLower(fieldErr.Field())
+		field := fieldErr.Field()
 		result[field] = "failed validation rule: " + fieldErr.Tag()
 	}
 	return result
+}
+
+func mapDatabaseError(pgErr *pgconn.PgError) *apperror.AppError {
+	switch pgErr.Code {
+	case "23505":
+		return apperror.Conflict("Data already exists")
+	case "23503":
+		return apperror.BadRequest("Related data is invalid or no longer exists")
+	case "23514", "22P02":
+		return apperror.BadRequest("Data is invalid")
+	default:
+		return apperror.New(http.StatusInternalServerError, "INTERNAL_ERROR", "Unexpected server error")
+	}
 }

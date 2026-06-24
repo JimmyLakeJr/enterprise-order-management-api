@@ -5,10 +5,10 @@ import GlassCard from "../../components/common/GlassCard";
 export default function ForbiddenPage() {
   return (
     <GlassCard strong>
-      <h1>Forbidden</h1>
-      <p className="muted">Your account does not have permission to access this page.</p>
+      <h1>Không có quyền truy cập</h1>
+      <p className="muted">Tài khoản của bạn không có quyền mở trang này.</p>
       <Link to="/">
-        <Button>Back to products</Button>
+        <Button>Về trang sản phẩm</Button>
       </Link>
     </GlassCard>
   );

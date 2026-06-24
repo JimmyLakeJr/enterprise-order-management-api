@@ -14,9 +14,11 @@ import (
 type CategoryService interface {
 	Create(ctx context.Context, req dto.CategoryRequest) (*dto.CategoryResponse, error)
 	List(ctx context.Context) ([]dto.CategoryResponse, error)
+	AdminList(ctx context.Context, status string) ([]dto.CategoryResponse, error)
 	FindByID(ctx context.Context, id int64) (*dto.CategoryResponse, error)
 	Update(ctx context.Context, id int64, req dto.CategoryRequest) (*dto.CategoryResponse, error)
 	Delete(ctx context.Context, id int64) error
+	Restore(ctx context.Context, id int64) (*dto.CategoryResponse, error)
 }
 
 type categoryService struct {
@@ -46,6 +48,24 @@ func (s *categoryService) Create(ctx context.Context, req dto.CategoryRequest) (
 
 func (s *categoryService) List(ctx context.Context) ([]dto.CategoryResponse, error) {
 	categories, err := s.categories.ListActive(ctx)
+	if err != nil {
+		return nil, err
+	}
+	res := make([]dto.CategoryResponse, 0, len(categories))
+	for i := range categories {
+		res = append(res, ToCategoryResponse(&categories[i]))
+	}
+	return res, nil
+}
+
+func (s *categoryService) AdminList(ctx context.Context, status string) ([]dto.CategoryResponse, error) {
+	if status == "" {
+		status = "all"
+	}
+	if status != "all" && status != "active" && status != "inactive" {
+		return nil, apperror.BadRequest("Invalid category status filter")
+	}
+	categories, err := s.categories.ListAdmin(ctx, status)
 	if err != nil {
 		return nil, err
 	}
@@ -103,6 +123,14 @@ func (s *categoryService) Update(ctx context.Context, id int64, req dto.Category
 }
 
 func (s *categoryService) Delete(ctx context.Context, id int64) error {
+	hasActiveProducts, err := s.categories.HasActiveProducts(ctx, id)
+	if err != nil {
+		return err
+	}
+	if hasActiveProducts {
+		return apperror.Conflict("Category cannot be deleted while it has active products")
+	}
+
 	if err := s.categories.SoftDelete(ctx, id); err != nil {
 		if err == pgx.ErrNoRows {
 			return apperror.NotFound("Category not found")
@@ -110,6 +138,21 @@ func (s *categoryService) Delete(ctx context.Context, id int64) error {
 		return err
 	}
 	return nil
+}
+
+func (s *categoryService) Restore(ctx context.Context, id int64) (*dto.CategoryResponse, error) {
+	if err := s.categories.Restore(ctx, id); err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, apperror.NotFound("Inactive category not found")
+		}
+		return nil, err
+	}
+	category, err := s.categories.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	res := ToCategoryResponse(category)
+	return &res, nil
 }
 
 func categoryFromRequest(req dto.CategoryRequest) *model.Category {

@@ -1,0 +1,2 @@
+ALTER TABLE users
+ADD COLUMN IF NOT EXISTS profile_video_url TEXT NOT NULL DEFAULT '';

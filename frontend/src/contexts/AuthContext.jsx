@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { authApi } from "../api/authApi";
+import { userApi } from "../api/userApi";
 import { clearAuthStorage, getAccessToken, getRefreshToken, saveAuthTokens } from "../api/apiClient";
 import { AUTH_EVENTS, ROLES, STORAGE_KEYS } from "../constants/domain";
 
@@ -131,6 +132,38 @@ export function AuthProvider({ children }) {
     }
   }, [clearAuthData]);
 
+  const updateProfile = useCallback(async (payload) => {
+    const updatedUser = await userApi.updateMe(payload);
+    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
+    setUser(updatedUser);
+    return updatedUser;
+  }, []);
+
+  const uploadAvatar = useCallback(async (file) => {
+    const updatedUser = await userApi.uploadAvatar(file);
+    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
+    setUser(updatedUser);
+    return updatedUser;
+  }, []);
+
+  const uploadProfileVideo = useCallback(async (file) => {
+    const updatedUser = await userApi.uploadProfileVideo(file);
+    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
+    setUser(updatedUser);
+    return updatedUser;
+  }, []);
+
+  const completeOAuthLogin = useCallback(async ({ accessToken: nextAccessToken, refreshToken: nextRefreshToken }) => {
+    saveAuthTokens({
+      accessToken: nextAccessToken,
+      refreshToken: nextRefreshToken,
+    });
+    setAccessToken(nextAccessToken);
+    setRefreshToken(nextRefreshToken);
+    const me = await loadMe();
+    return me;
+  }, [loadMe]);
+
   const value = useMemo(
     () => ({
       user,
@@ -143,8 +176,12 @@ export function AuthProvider({ children }) {
       login,
       logout,
       loadMe,
+      updateProfile,
+      uploadAvatar,
+      uploadProfileVideo,
+      completeOAuthLogin,
     }),
-    [accessToken, loadMe, loading, login, logout, refreshToken, register, user]
+    [accessToken, completeOAuthLogin, loadMe, loading, login, logout, refreshToken, register, updateProfile, uploadAvatar, uploadProfileVideo, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

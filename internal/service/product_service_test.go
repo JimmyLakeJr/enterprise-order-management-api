@@ -33,7 +33,7 @@ func TestProductService_CreateSuccess(t *testing.T) {
 		}, nil
 	}
 
-	service := NewProductService(productRepo, categoryRepo)
+	service := NewProductService(productRepo, categoryRepo, nil)
 
 	res, err := service.Create(context.Background(), dto.ProductRequest{
 		CategoryID:  1,
@@ -49,7 +49,7 @@ func TestProductService_CreateSuccess(t *testing.T) {
 }
 
 func TestProductService_CreateNegativePrice(t *testing.T) {
-	service := NewProductService(&mockProductRepository{}, &mockCategoryRepository{})
+	service := NewProductService(&mockProductRepository{}, &mockCategoryRepository{}, nil)
 
 	res, err := service.Create(context.Background(), dto.ProductRequest{
 		CategoryID: 1,
@@ -63,7 +63,7 @@ func TestProductService_CreateNegativePrice(t *testing.T) {
 }
 
 func TestProductService_CreateNegativeStock(t *testing.T) {
-	service := NewProductService(&mockProductRepository{}, &mockCategoryRepository{})
+	service := NewProductService(&mockProductRepository{}, &mockCategoryRepository{}, nil)
 
 	res, err := service.Create(context.Background(), dto.ProductRequest{
 		CategoryID: 1,
@@ -83,7 +83,7 @@ func TestProductService_CreateCategoryNotFound(t *testing.T) {
 		},
 	}
 
-	service := NewProductService(&mockProductRepository{}, categoryRepo)
+	service := NewProductService(&mockProductRepository{}, categoryRepo, nil)
 
 	res, err := service.Create(context.Background(), dto.ProductRequest{
 		CategoryID: 99,
@@ -91,6 +91,48 @@ func TestProductService_CreateCategoryNotFound(t *testing.T) {
 		Price:      1000,
 		Stock:      10,
 	})
+
+	require.Error(t, err)
+	require.Nil(t, res)
+}
+
+func TestProductService_RestoreSuccess(t *testing.T) {
+	restored := false
+	productRepo := &mockProductRepository{
+		findByIDFunc: func(context.Context, int64) (*model.Product, error) {
+			return &model.Product{ID: 1, CategoryID: 2, Name: "Mouse", IsActive: restored, Category: &model.Category{ID: 2, IsActive: true}}, nil
+		},
+		restoreFunc: func(context.Context, int64) error {
+			restored = true
+			return nil
+		},
+	}
+	categoryRepo := &mockCategoryRepository{
+		findActiveByIDFunc: func(context.Context, int64) (*model.Category, error) {
+			return &model.Category{ID: 2, IsActive: true}, nil
+		},
+	}
+	service := NewProductService(productRepo, categoryRepo, nil)
+
+	res, err := service.Restore(context.Background(), 1)
+
+	require.NoError(t, err)
+	require.True(t, restored)
+	require.True(t, res.IsActive)
+}
+
+func TestProductService_RestoreRequiresActiveCategory(t *testing.T) {
+	productRepo := &mockProductRepository{
+		findByIDFunc: func(context.Context, int64) (*model.Product, error) {
+			return &model.Product{ID: 1, CategoryID: 2, IsActive: false}, nil
+		},
+	}
+	categoryRepo := &mockCategoryRepository{
+		findActiveByIDFunc: func(context.Context, int64) (*model.Category, error) { return nil, nil },
+	}
+	service := NewProductService(productRepo, categoryRepo, nil)
+
+	res, err := service.Restore(context.Background(), 1)
 
 	require.Error(t, err)
 	require.Nil(t, res)

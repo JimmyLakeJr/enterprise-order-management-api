@@ -5,6 +5,7 @@ import (
 
 	"enterprise-order-management-api/internal/dto"
 	appmiddleware "enterprise-order-management-api/internal/middleware"
+	"enterprise-order-management-api/internal/pkg/apperror"
 	"enterprise-order-management-api/internal/pkg/response"
 	"enterprise-order-management-api/internal/service"
 
@@ -17,14 +18,6 @@ type UserHandler struct {
 
 func NewUserHandler(users service.UserService) *UserHandler {
 	return &UserHandler{users: users}
-}
-
-func (h *UserHandler) Me(c echo.Context) error {
-	res, err := h.users.Me(c.Request().Context(), appmiddleware.CurrentUserID(c))
-	if err != nil {
-		return err
-	}
-	return response.OK(c, res)
 }
 
 func (h *UserHandler) List(c echo.Context) error {
@@ -69,6 +62,46 @@ func (h *UserHandler) Update(c echo.Context) error {
 	}
 
 	res, err := h.users.Update(c.Request().Context(), id, req)
+	if err != nil {
+		return err
+	}
+	return response.OK(c, res)
+}
+
+func (h *UserHandler) UpdateMe(c echo.Context) error {
+	var req dto.UpdateProfileRequest
+	if err := c.Bind(&req); err != nil {
+		return err
+	}
+	if err := c.Validate(&req); err != nil {
+		return err
+	}
+
+	res, err := h.users.UpdateProfile(c.Request().Context(), appmiddleware.CurrentUserID(c), req)
+	if err != nil {
+		return err
+	}
+	return response.OK(c, res)
+}
+
+func (h *UserHandler) UploadAvatar(c echo.Context) error {
+	file, err := c.FormFile("avatar")
+	if err != nil {
+		return apperror.BadRequest("Avatar file is required")
+	}
+	res, err := h.users.UploadAvatar(c.Request().Context(), appmiddleware.CurrentUserID(c), file)
+	if err != nil {
+		return err
+	}
+	return response.OK(c, res)
+}
+
+func (h *UserHandler) UploadProfileVideo(c echo.Context) error {
+	file, err := c.FormFile("video")
+	if err != nil {
+		return apperror.BadRequest("Video file is required")
+	}
+	res, err := h.users.UploadProfileVideo(c.Request().Context(), appmiddleware.CurrentUserID(c), file)
 	if err != nil {
 		return err
 	}

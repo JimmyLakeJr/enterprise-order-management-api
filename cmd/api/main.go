@@ -16,6 +16,10 @@ import (
 func main() {
 	cfg := config.Load()
 
+	if err := os.MkdirAll(cfg.UploadDir, 0o755); err != nil {
+		log.Fatalf("create upload dir: %v", err)
+	}
+
 	db, err := database.Connect(cfg.DatabaseURL)
 	if err != nil {
 		log.Fatalf("connect database: %v", err)

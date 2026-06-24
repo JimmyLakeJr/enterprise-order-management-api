@@ -35,7 +35,3 @@ func NotFound(message string) *AppError {
 func Conflict(message string) *AppError {
 	return New(http.StatusConflict, "CONFLICT", message)
 }
-
-func Internal(message string) *AppError {
-	return New(http.StatusInternalServerError, "INTERNAL_ERROR", message)
-}
