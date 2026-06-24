@@ -66,6 +66,36 @@ func (h *ProductHandler) List(c echo.Context) error {
 	return response.Paginated(c, res, meta)
 }
 
+func (h *ProductHandler) AdminList(c echo.Context) error {
+	query := dto.ProductListQuery{
+		Page:       parseIntQuery(c, "page", 1),
+		Limit:      parseIntQuery(c, "limit", 10),
+		Search:     c.QueryParam("keyword"),
+		CategoryID: parseInt64Query(c, "category_id", 0),
+		MinPrice:   parseInt64Query(c, "min_price", 0),
+		MaxPrice:   parseInt64Query(c, "max_price", 0),
+		Status:     c.QueryParam("status"),
+	}
+	res, meta, err := h.products.AdminList(c.Request().Context(), query)
+	if err != nil {
+		return err
+	}
+	return response.Paginated(c, res, meta)
+}
+
+func (h *ProductHandler) UploadImage(c echo.Context) error {
+	file, err := c.FormFile("image")
+	if err != nil {
+		return apperror.BadRequest("Image file is required")
+	}
+
+	res, err := h.products.UploadImage(c.Request().Context(), file)
+	if err != nil {
+		return err
+	}
+	return response.Created(c, res)
+}
+
 func (h *ProductHandler) Update(c echo.Context) error {
 	id, err := parseID(c.Param("id"))
 	if err != nil {
@@ -97,6 +127,18 @@ func (h *ProductHandler) Delete(c echo.Context) error {
 		return err
 	}
 	return response.Message(c, http.StatusOK, "Product deleted successfully")
+}
+
+func (h *ProductHandler) Restore(c echo.Context) error {
+	id, err := parseID(c.Param("id"))
+	if err != nil {
+		return err
+	}
+	res, err := h.products.Restore(c.Request().Context(), id)
+	if err != nil {
+		return err
+	}
+	return response.OK(c, res)
 }
 
 func parseID(value string) (int64, error) {

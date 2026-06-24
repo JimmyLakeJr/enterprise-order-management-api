@@ -2,8 +2,8 @@ import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { getMessage } from "../../api/apiClient";
 import Button from "../../components/common/Button";
-import Card from "../../components/common/Card";
 import ErrorMessage from "../../components/common/ErrorMessage";
+import GlassCard from "../../components/common/GlassCard";
 import Input from "../../components/common/Input";
 import { useAuth } from "../../contexts/AuthContext";
 
@@ -19,10 +19,10 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
 
   function validate() {
-    if (form.full_name.trim().length < 2) return "Full name must have at least 2 characters";
-    if (!form.email.includes("@")) return "Email is invalid";
-    if (form.password.length < 6) return "Password must have at least 6 characters";
-    if (form.password !== form.confirm_password) return "Confirm password does not match";
+    if (form.full_name.trim().length < 2) return "Họ tên phải có ít nhất 2 ký tự.";
+    if (!form.email.includes("@")) return "Email không hợp lệ.";
+    if (form.password.length < 6) return "Mật khẩu phải có ít nhất 6 ký tự.";
+    if (form.password !== form.confirm_password) return "Mật khẩu xác nhận không khớp.";
     return "";
   }
 
@@ -50,21 +50,46 @@ export default function RegisterPage() {
 
   return (
     <div className="auth-shell">
-      <Card>
-        <h1>Register</h1>
-        <p className="muted">Create a user account for the demo client.</p>
+      <GlassCard strong className="auth-card">
+        <h1>Đăng ký</h1>
+        <p className="muted">Tạo tài khoản để bắt đầu đặt hàng, theo dõi trạng thái và quản lý thông tin cá nhân.</p>
         <ErrorMessage message={error} />
         <form className="form-stack" onSubmit={handleSubmit}>
-          <Input label="Full name" value={form.full_name} onChange={(e) => setForm({ ...form, full_name: e.target.value })} />
-          <Input label="Email" type="email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-          <Input label="Password" type="password" value={form.password} onChange={(e) => setForm({ ...form, password: e.target.value })} />
-          <Input label="Confirm password" type="password" value={form.confirm_password} onChange={(e) => setForm({ ...form, confirm_password: e.target.value })} />
-          <Button disabled={loading}>{loading ? "Creating account..." : "Register"}</Button>
+          <Input
+            label="Họ tên"
+            autoComplete="name"
+            value={form.full_name}
+            onChange={(event) => setForm({ ...form, full_name: event.target.value })}
+          />
+          <Input
+            label="Email"
+            type="email"
+            autoComplete="email"
+            value={form.email}
+            onChange={(event) => setForm({ ...form, email: event.target.value })}
+          />
+          <Input
+            label="Mật khẩu"
+            type="password"
+            autoComplete="new-password"
+            value={form.password}
+            onChange={(event) => setForm({ ...form, password: event.target.value })}
+          />
+          <Input
+            label="Xác nhận mật khẩu"
+            type="password"
+            autoComplete="new-password"
+            value={form.confirm_password}
+            onChange={(event) => setForm({ ...form, confirm_password: event.target.value })}
+          />
+          <Button type="submit" disabled={loading}>
+            {loading ? "Đang tạo tài khoản..." : "Đăng ký"}
+          </Button>
         </form>
         <p className="muted">
-          Already have an account? <Link to="/login">Login</Link>
+          Đã có tài khoản? <Link to="/login">Đăng nhập</Link>
         </p>
-      </Card>
+      </GlassCard>
     </div>
   );
 }

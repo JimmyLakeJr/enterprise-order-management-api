@@ -14,9 +14,12 @@ type CategoryRepository interface {
 	FindByID(ctx context.Context, id int64) (*model.Category, error)
 	FindActiveByID(ctx context.Context, id int64) (*model.Category, error)
 	ListActive(ctx context.Context) ([]model.Category, error)
+	ListAdmin(ctx context.Context, status string) ([]model.Category, error)
 	ExistsByNameOtherCategory(ctx context.Context, name string, categoryID int64) (bool, error)
+	HasActiveProducts(ctx context.Context, categoryID int64) (bool, error)
 	Update(ctx context.Context, category *model.Category) error
 	SoftDelete(ctx context.Context, id int64) error
+	Restore(ctx context.Context, id int64) error
 }
 
 type categoryRepository struct {
@@ -99,6 +102,36 @@ func (r *categoryRepository) ListActive(ctx context.Context) ([]model.Category, 
 	return categories, rows.Err()
 }
 
+func (r *categoryRepository) ListAdmin(ctx context.Context, status string) ([]model.Category, error) {
+	query := `
+		SELECT id, name, description, is_active, created_at, updated_at
+		FROM categories
+	`
+	switch status {
+	case "active":
+		query += " WHERE is_active = TRUE"
+	case "inactive":
+		query += " WHERE is_active = FALSE"
+	}
+	query += " ORDER BY name ASC"
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	categories := make([]model.Category, 0)
+	for rows.Next() {
+		var category model.Category
+		if err := rows.Scan(&category.ID, &category.Name, &category.Description, &category.IsActive, &category.CreatedAt, &category.UpdatedAt); err != nil {
+			return nil, err
+		}
+		categories = append(categories, category)
+	}
+	return categories, rows.Err()
+}
+
 func (r *categoryRepository) ExistsByNameOtherCategory(ctx context.Context, name string, categoryID int64) (bool, error) {
 	query := `
 		SELECT EXISTS(
@@ -110,6 +143,14 @@ func (r *categoryRepository) ExistsByNameOtherCategory(ctx context.Context, name
 
 	var exists bool
 	err := r.db.QueryRow(ctx, query, name, categoryID).Scan(&exists)
+	return exists, err
+}
+
+func (r *categoryRepository) HasActiveProducts(ctx context.Context, categoryID int64) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM products WHERE category_id = $1 AND is_active = TRUE)`
+
+	var exists bool
+	err := r.db.QueryRow(ctx, query, categoryID).Scan(&exists)
 	return exists, err
 }
 
@@ -131,6 +172,18 @@ func (r *categoryRepository) Update(ctx context.Context, category *model.Categor
 
 func (r *categoryRepository) SoftDelete(ctx context.Context, id int64) error {
 	query := `UPDATE categories SET is_active = FALSE, updated_at = NOW() WHERE id = $1 AND is_active = TRUE`
+	commandTag, err := r.db.Exec(ctx, query, id)
+	if err != nil {
+		return err
+	}
+	if commandTag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (r *categoryRepository) Restore(ctx context.Context, id int64) error {
+	query := `UPDATE categories SET is_active = TRUE, updated_at = NOW() WHERE id = $1 AND is_active = FALSE`
 	commandTag, err := r.db.Exec(ctx, query, id)
 	if err != nil {
 		return err

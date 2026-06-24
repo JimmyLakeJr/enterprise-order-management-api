@@ -9,79 +9,113 @@ import Input from "../../components/common/Input";
 import Loading from "../../components/common/Loading";
 import { useCart } from "../../contexts/CartContext";
 import { useAsync } from "../../hooks/useAsync";
-import { formatCurrency } from "../../utils/format";
+import { formatCurrency } from "../../utils/formatCurrency";
+import { resolveAssetUrl } from "../../utils/resolveAssetUrl";
 
 export default function ProductDetailPage() {
   const { id } = useParams();
   const { addToCart } = useCart();
-  const { data: product, loading, error } = useAsync(() => getProductById(id), [id]);
-  const [quantity, setQuantity] = useState(1);
-  const [message, setMessage] = useState("");
+  const { data: product, loading, error, reload } = useAsync(() => getProductById(id), [id]);
+  const [quantityState, setQuantityState] = useState({ productId: id, value: 1 });
+  const [messageState, setMessageState] = useState({ productId: id, value: "" });
+  const [failedImageUrl, setFailedImageUrl] = useState("");
+  const quantity = quantityState.productId === id ? quantityState.value : 1;
+  const message = messageState.productId === id ? messageState.value : "";
 
-  if (loading) return <Loading />;
-  if (error) return <ErrorMessage message={error} />;
+  if (loading) return <Loading label="Đang tải chi tiết sản phẩm..." variant="detail" count={2} />;
+
+  if (error) {
+    return (
+      <div className="detail-error">
+        <ErrorMessage message={`Không tải được sản phẩm: ${error}`} />
+        <div className="actions">
+          <Button onClick={reload}>Thử lại</Button>
+          <Link className="btn btn-secondary" to="/">Về danh sách</Link>
+        </div>
+      </div>
+    );
+  }
+
   if (!product) return <ErrorMessage message="Không tìm thấy sản phẩm." />;
 
-  const stock = Number(product.stock || 0);
-  const categoryName = product.category?.name || product.category_name || "Sản phẩm";
+  const parsedStock = Number(product.stock);
+  const hasStock = Number.isFinite(parsedStock);
+  const stock = hasStock ? Math.max(0, parsedStock) : null;
+  const isOutOfStock = hasStock && stock <= 0;
+  const numericQuantity = Number(quantity);
   const quantityError =
-    Number(quantity) <= 0 ? "Số lượng phải lớn hơn 0." : Number(quantity) > stock ? "Số lượng không được vượt tồn kho." : "";
+    quantity === "" || !Number.isInteger(numericQuantity) || numericQuantity <= 0
+      ? "Số lượng phải là số nguyên lớn hơn 0."
+      : hasStock && numericQuantity > stock
+        ? `Số lượng không được vượt quá tồn kho (${stock}).`
+        : "";
+  const categoryName = product.category?.name || product.category_name || "Chưa phân loại";
+  const imageSrc = resolveAssetUrl(product.image_url);
 
   function handleQuantityChange(event) {
-    const nextQuantity = Number(event.target.value);
-    if (nextQuantity > stock) {
-      setQuantity(stock);
-      return;
-    }
-    setQuantity(nextQuantity);
+    setQuantityState({ productId: id, value: event.target.value });
+    setMessageState({ productId: id, value: "" });
   }
 
   function handleAddToCart() {
-    if (quantityError || stock <= 0) return;
-    addToCart(product, Number(quantity));
-    setMessage(`Đã thêm ${quantity} sản phẩm vào giỏ hàng.`);
+    if (quantityError || isOutOfStock) return;
+    addToCart(product, numericQuantity);
+    setMessageState({ productId: id, value: `Đã thêm ${numericQuantity} × “${product.name}” vào giỏ hàng.` });
   }
 
   return (
-    <Card>
-      <div className="product-detail">
-        <div className="product-detail-image">
-          {product.image_url ? <img src={product.image_url} alt={product.name} /> : <span>Không có ảnh</span>}
-        </div>
+    <>
+      <Link to="/" className="back-link">← Quay lại danh sách sản phẩm</Link>
 
-        <div className="form-stack">
-          <div>
-            <Link to="/" className="muted">
-              Quay lại danh sách
-            </Link>
-            <h1>{product.name}</h1>
+      <Card className="product-detail-card">
+        <div className="product-detail">
+          <div className="product-detail-image">
+            {imageSrc && failedImageUrl !== imageSrc ? (
+              <img src={imageSrc} alt={product.name} onError={() => setFailedImageUrl(imageSrc)} />
+            ) : (
+              <span className="image-placeholder image-placeholder-large">
+                <span aria-hidden="true">▧</span>
+                Sản phẩm chưa có ảnh
+              </span>
+            )}
+          </div>
+
+          <div className="product-detail-content">
             <Badge tone="primary">{categoryName}</Badge>
+            <div>
+              <h1>{product.name}</h1>
+              <p className="product-description">{product.description || "Sản phẩm này chưa có mô tả."}</p>
+            </div>
+
+            <strong className="product-detail-price">{formatCurrency(product.price)}</strong>
+            <div className={isOutOfStock ? "stock-danger stock-panel" : "stock-panel stock-available"}>
+              <span>{isOutOfStock ? "Hết hàng" : "Sẵn sàng đặt hàng"}</span>
+              <strong>{hasStock ? `${stock} sản phẩm trong kho` : "Còn hàng"}</strong>
+            </div>
+
+            <div className="purchase-panel">
+              <Input
+                label="Số lượng"
+                type="number"
+                inputMode="numeric"
+                min="1"
+                max={hasStock ? stock : undefined}
+                step="1"
+                value={quantity}
+                onChange={handleQuantityChange}
+                disabled={isOutOfStock}
+                error={quantityError}
+                fieldClassName="quantity-box"
+              />
+              <Button className="add-to-cart-button" onClick={handleAddToCart} disabled={isOutOfStock || Boolean(quantityError)}>
+                {isOutOfStock ? "Tạm hết hàng" : "Thêm vào giỏ"}
+              </Button>
+            </div>
+
+            {message && <div className="alert alert-success" role="status">{message}</div>}
           </div>
-
-          <p>{product.description || "Chưa có mô tả cho sản phẩm này."}</p>
-          <h2>{formatCurrency(product.price)}</h2>
-          <p className={stock > 0 ? "muted" : "stock-danger"}>Tồn kho: {stock}</p>
-
-          <div className="quantity-box">
-            <Input
-              label="Số lượng"
-              type="number"
-              min="1"
-              max={stock}
-              value={quantity}
-              onChange={handleQuantityChange}
-              disabled={stock <= 0}
-              error={quantityError}
-            />
-          </div>
-
-          {message && <div className="alert alert-success">{message}</div>}
-
-          <Button onClick={handleAddToCart} disabled={stock <= 0 || Boolean(quantityError)}>
-            Thêm vào giỏ
-          </Button>
         </div>
-      </div>
-    </Card>
+      </Card>
+    </>
   );
 }

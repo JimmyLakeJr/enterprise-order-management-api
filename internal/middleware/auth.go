@@ -11,7 +11,6 @@ import (
 
 const (
 	ContextUserID = "user_id"
-	ContextEmail  = "email"
 	ContextRole   = "role"
 )
 
@@ -34,7 +33,6 @@ func JWTAuth(accessSecret string) echo.MiddlewareFunc {
 			}
 
 			c.Set(ContextUserID, claims.UserID)
-			c.Set(ContextEmail, claims.Email)
 			c.Set(ContextRole, claims.Role)
 			return next(c)
 		}

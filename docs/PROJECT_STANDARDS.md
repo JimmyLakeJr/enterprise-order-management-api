@@ -1,91 +1,51 @@
-# Quy chuẩn chung của project
+# Project Standards
 
-Tài liệu này là checklist kỹ thuật cho project `enterprise-order-management-api`.
+## Phạm vi
 
-## Trọng tâm
+- Giữ project là API quản lý sản phẩm, tồn kho cơ bản, user và order với frontend demo.
+- Không tự mở rộng module Phase 2 hoặc inventory ledger; danh sách ngoài scope được duy trì tại tài liệu scope.
+- Ưu tiên patch nhỏ, không rewrite module đang hoạt động.
 
-- Backend API là phần chính.
-- Frontend chỉ là demo client đơn giản.
-- Phạm vi phù hợp thực tập 2 tháng.
-- Code rõ ràng, dễ đọc, dễ bảo trì, phù hợp intern/junior backend.
+## Source of truth
 
-## Stack
+- Backend: `cmd/api`, `internal/*`, `migrations/001_init.sql`.
+- Runtime: root `Dockerfile`, `docker-compose.yml`.
+- Frontend demo: `frontend/src`.
+- Không dùng `backend/` skeleton làm runtime nghiệp vụ.
 
-- Backend: Golang 1.22+
-- Framework: Echo v4
-- Database: PostgreSQL
-- Database access: SQL thuần với `pgx/v5` và `pgxpool`
-- Không dùng ORM như GORM
-- Authentication: JWT access token + refresh token
-- JWT library: `github.com/golang-jwt/jwt/v5`
-- Password hashing: `golang.org/x/crypto/bcrypt`
-- Validation: `github.com/go-playground/validator/v10`
-- Config: `.env`, `godotenv`, `os.Getenv`
-- Testing: `testing` + `testify` khi cần assertion phức tạp
-- Deploy local: Docker Compose
-- Deploy demo production: Supabase/Neon, Render, Vercel
+## Backend
 
-## Kiến trúc backend
+- Giữ luồng `router -> middleware -> handler -> service -> repository`.
+- Handler xử lý HTTP; service giữ business rule; repository giữ SQL.
+- Validate input, dùng error/response helper chung và không lộ lỗi nội bộ.
+- Bảo vệ route bằng JWT/role; kiểm tra ownership ở resource của user.
+- Dùng transaction cho create order/stock update; tránh N+1 khi thay đổi query mới.
+- Migration rủi ro phải được đánh giá riêng, không sửa chỉ để làm đẹp demo.
 
-- Handler: nhận request, parse request, gọi service, trả response.
-- Service: xử lý business logic.
-- Repository: thao tác database bằng SQL thuần.
-- Model: ánh xạ dữ liệu database.
-- DTO: định nghĩa request/response.
-- Middleware: JWT auth, role authorization, CORS, logger, recovery.
-- Config: load biến môi trường.
-- Database: khởi tạo `pgxpool`, transaction, close connection.
-- Util/pkg: JWT, password, response, pagination/hash helper.
+## Frontend
 
-## Quy tắc code
+- API call tập trung ở API layer; không hard-code endpoint trong page/component.
+- Không gửi giá order từ client và không gọi contract chưa tồn tại.
+- Copy tiếng Việt nhất quán; có loading/error/empty state cho request chính.
+- Dùng token/CSS hiện có, responsive và reduced-motion; tránh thêm UI library nặng không cần thiết.
+- Ưu tiên custom confirm/toast thay browser dialog trong flow demo.
 
-- Không viết SQL trong handler.
-- Không viết business logic trong handler.
-- Không hard-code secret/database URL/JWT secret khi deploy.
-- Không trả `password_hash` ra response.
-- Không expose lỗi database thô cho client.
-- Không nối chuỗi SQL trực tiếp với input người dùng.
-- Phải dùng parameterized query.
-- Phải dùng transaction cho tạo đơn hàng.
-- Phải validate input trước khi xử lý.
-- Phải trả response JSON thống nhất.
-- Phải có `.env.example`.
-- Phải có README, Dockerfile, Docker Compose, API docs hoặc Postman collection.
+## Kiểm tra
 
-## Response format
+```bash
+go test ./cmd/... ./internal/...
+go vet ./cmd/... ./internal/...
 
-Success:
-
-```json
-{
-  "success": true,
-  "message": "Success",
-  "data": {}
-}
+cd frontend
+npm run lint
+npm run build
 ```
 
-Error:
+Không chạy `go test ./...` khi nó có thể quét nhầm `frontend/node_modules`. Chỉ chạy test/build liên quan đến phase vừa sửa.
 
-```json
-{
-  "success": false,
-  "message": "Validation failed",
-  "errors": {}
-}
-```
+## Tài liệu và Git
 
-Pagination:
-
-```json
-{
-  "success": true,
-  "message": "Success",
-  "data": [],
-  "meta": {
-    "page": 1,
-    "limit": 10,
-    "total": 0,
-    "total_pages": 0
-  }
-}
-```
+- README định hướng; local guide hướng dẫn chạy; runbook chứa checklist demo; scope/gap giữ trạng thái hiện tại.
+- Prompt/report cũ chỉ là archive, không dùng làm source of truth.
+- Không commit secret, token, dữ liệu cá nhân hoặc credential production.
+- Giữ thay đổi tập trung, không ghi đè phần việc không liên quan trong worktree.

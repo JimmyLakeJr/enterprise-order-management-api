@@ -1,69 +1,106 @@
 import { Link, useParams } from "react-router-dom";
 import { getOrderById } from "../../api/orderApi";
 import Badge from "../../components/common/Badge";
+import Button from "../../components/common/Button";
 import Card from "../../components/common/Card";
+import EmptyState from "../../components/common/EmptyState";
 import ErrorMessage from "../../components/common/ErrorMessage";
 import Loading from "../../components/common/Loading";
 import Table from "../../components/common/Table";
 import { useAsync } from "../../hooks/useAsync";
-import { formatCurrency, formatDate } from "../../utils/format";
-
-function getStatusTone(status) {
-  const tones = {
-    pending: "warning",
-    confirmed: "primary",
-    shipping: "info",
-    completed: "success",
-    cancelled: "danger",
-  };
-  return tones[status] || "default";
-}
+import { formatCurrency } from "../../utils/formatCurrency";
+import { getOrderStatus } from "../../utils/orderStatus";
 
 export default function OrderDetailPage() {
   const { id } = useParams();
-  const { data: order, loading, error } = useAsync(() => getOrderById(id), [id]);
+  const { data: order, loading, error, reload } = useAsync(() => getOrderById(id), [id]);
 
-  if (loading) return <Loading />;
-  if (error) return <ErrorMessage message={error} />;
+  if (loading) return <Loading label="Đang tải chi tiết đơn hàng..." variant="detail" count={2} />;
+
+  if (error) {
+    return (
+      <div className="detail-error">
+        <ErrorMessage message={`Không tải được đơn hàng: ${error}`} />
+        <div className="actions">
+          <Button onClick={reload}>Thử lại</Button>
+          <Link className="btn btn-secondary" to="/my-orders">Về danh sách</Link>
+        </div>
+      </div>
+    );
+  }
+
   if (!order) return <ErrorMessage message="Không tìm thấy đơn hàng." />;
 
-  const items = order.items || order.order_items || [];
+  const items = Array.isArray(order.items) ? order.items : [];
+  const status = getOrderStatus(order.status);
 
   return (
-    <Card>
-      <div className="page-header">
-        <div>
-          <Link to="/my-orders" className="muted">
-            Quay lại đơn hàng
-          </Link>
-          <h1>Đơn hàng #{order.code || order.id}</h1>
-          <div className="order-meta">
-            <Badge tone={getStatusTone(order.status)}>{order.status}</Badge>
-            {order.created_at && <span className="muted">{formatDate(order.created_at)}</span>}
+    <div className="grid order-detail-layout">
+      <Link to="/my-orders" className="back-link">← Quay lại đơn hàng của tôi</Link>
+
+      <Card className="order-overview-card">
+        <div className="page-header order-detail-header">
+          <div>
+            <span className="eyebrow">Chi tiết đơn hàng</span>
+            <h1>Đơn hàng #{order.id}</h1>
+            <p className="muted">Theo dõi sản phẩm, trạng thái và giá trị đơn hàng.</p>
+          </div>
+          <Badge tone={status.tone} className="order-status-badge">{status.label}</Badge>
+        </div>
+
+        <div className="order-info-grid">
+          <div>
+            <span>Trạng thái</span>
+            <strong>{status.label}</strong>
+          </div>
+          <div>
+            <span>Số dòng sản phẩm</span>
+            <strong>{items.length}</strong>
+          </div>
+          <div>
+            <span>Tổng tiền</span>
+            <strong>{formatCurrency(order.total_amount)}</strong>
           </div>
         </div>
-        <strong className="cart-total">{formatCurrency(order.total_amount)}</strong>
-      </div>
+      </Card>
 
-      <Table
-        rows={items}
-        getRowKey={(item, index) => item.id || `${item.product_id}-${index}`}
-        columns={[
-          {
-            key: "product",
-            title: "Product",
-            render: (item) => item.name || item.product_name || item.product?.name || `#${item.product_id}`,
-          },
-          { key: "unit_price", title: "Unit Price", render: (item) => formatCurrency(item.unit_price) },
-          { key: "quantity", title: "Quantity" },
-          { key: "subtotal", title: "Subtotal", render: (item) => formatCurrency(item.subtotal) },
-        ]}
-      />
+      <Card className="order-items-card">
+        <div className="section-heading">
+          <div>
+            <h2>Sản phẩm trong đơn</h2>
+            <p className="muted">Đơn giá và thành tiền được lưu tại thời điểm tạo đơn.</p>
+          </div>
+        </div>
 
-      <div className="cart-summary">
-        <span className="muted">Tổng tiền</span>
-        <strong>{formatCurrency(order.total_amount)}</strong>
-      </div>
-    </Card>
+        {items.length === 0 ? (
+          <EmptyState title="Đơn hàng chưa có sản phẩm" description="Chưa có sản phẩm nào trong đơn hàng này." />
+        ) : (
+          <Table
+            rows={items}
+            getRowKey={(item, index) => `${item.product_id}-${index}`}
+            columns={[
+              {
+                key: "product",
+                title: "Sản phẩm",
+                render: (item) => (
+                  <div className="cart-product">
+                    <strong>{item.name || `Sản phẩm #${item.product_id}`}</strong>
+                    <small className="muted">Mã sản phẩm: {item.product_id}</small>
+                  </div>
+                ),
+              },
+              { key: "unit_price", title: "Đơn giá", render: (item) => formatCurrency(item.unit_price) },
+              { key: "quantity", title: "Số lượng" },
+              { key: "subtotal", title: "Thành tiền", render: (item) => <strong>{formatCurrency(item.subtotal)}</strong> },
+            ]}
+          />
+        )}
+
+        <div className="order-total-row">
+          <span>Tổng tiền đơn hàng</span>
+          <strong>{formatCurrency(order.total_amount)}</strong>
+        </div>
+      </Card>
+    </div>
   );
 }

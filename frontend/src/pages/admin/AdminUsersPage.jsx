@@ -1,6 +1,6 @@
-import { useEffect, useState } from "react";
-import { userApi } from "../../api/userApi";
+import { useCallback, useEffect, useState } from "react";
 import { getMessage } from "../../api/apiClient";
+import { userApi } from "../../api/userApi";
 import Badge from "../../components/common/Badge";
 import Button from "../../components/common/Button";
 import Card from "../../components/common/Card";
@@ -10,91 +10,98 @@ import Input from "../../components/common/Input";
 import Loading from "../../components/common/Loading";
 import Select from "../../components/common/Select";
 import Table from "../../components/common/Table";
+import { ROLES } from "../../constants/domain";
 import { useAuth } from "../../contexts/AuthContext";
 import { formatDate } from "../../utils/format";
+import { useConfirm } from "../../hooks/useConfirm";
 
-const initialForm = {
-  name: "",
-  email: "",
-  role: "user",
-};
+const INITIAL_FORM = { name: "", email: "", role: ROLES.USER };
+const INITIAL_QUERY = { page: 1, limit: 10, search: "" };
 
 export default function AdminUsersPage() {
   const { user: currentUser } = useAuth();
+  const { confirm } = useConfirm();
   const [users, setUsers] = useState([]);
   const [meta, setMeta] = useState(null);
-  const [search, setSearch] = useState("");
-  const [page, setPage] = useState(1);
-  const [form, setForm] = useState(initialForm);
+  const [searchDraft, setSearchDraft] = useState("");
+  const [query, setQuery] = useState(INITIAL_QUERY);
+  const [form, setForm] = useState(INITIAL_FORM);
   const [editingId, setEditingId] = useState(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [deletingId, setDeletingId] = useState(null);
   const [error, setError] = useState("");
   const [formError, setFormError] = useState("");
 
-  useEffect(() => {
-    loadUsers({ page, search });
-  }, [page]);
-
-  async function loadUsers(params = {}) {
+  const loadUsers = useCallback(async (params) => {
     setLoading(true);
     setError("");
     try {
-      const result = await userApi.list({
-        page: params.page || 1,
-        limit: 10,
-        search: params.search || "",
-      });
+      const result = await userApi.list(params);
       setUsers(result.data);
       setMeta(result.meta);
     } catch (err) {
+      setUsers([]);
+      setMeta(null);
       setError(getMessage(err));
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => void loadUsers(query), 0);
+    return () => window.clearTimeout(timer);
+  }, [loadUsers, query]);
 
   function handleSearch(event) {
     event.preventDefault();
-    setPage(1);
-    loadUsers({ page: 1, search });
+    setQuery((current) => ({ ...current, page: 1, search: searchDraft.trim() }));
+  }
+
+  function clearSearch() {
+    setSearchDraft("");
+    setQuery(INITIAL_QUERY);
   }
 
   function handleFormChange(event) {
     const { name, value } = event.target;
     setForm((current) => ({ ...current, [name]: value }));
+    setFormError("");
   }
 
   function startEdit(user) {
     setEditingId(user.id);
-    setForm({
-      name: user.name || "",
-      email: user.email || "",
-      role: user.role || "user",
-    });
+    setForm({ name: user.name || "", email: user.email || "", role: user.role || ROLES.USER });
     setFormError("");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   function cancelEdit() {
     setEditingId(null);
-    setForm(initialForm);
+    setForm(INITIAL_FORM);
     setFormError("");
+  }
+
+  function validateForm() {
+    if (!form.name.trim()) return "Tên người dùng là bắt buộc.";
+    if (form.name.trim().length < 2) return "Tên người dùng phải có ít nhất 2 ký tự.";
+    if (!form.email.trim()) return "Email là bắt buộc.";
+    if (!/^\S+@\S+\.\S+$/.test(form.email.trim())) return "Email không hợp lệ.";
+    if (![ROLES.USER, ROLES.ADMIN].includes(form.role)) return "Role không hợp lệ.";
+    return "";
   }
 
   async function handleSubmit(event) {
     event.preventDefault();
-    setFormError("");
-
-    if (!form.name.trim()) {
-      setFormError("Tên user là bắt buộc.");
-      return;
-    }
-    if (!form.email.trim()) {
-      setFormError("Email là bắt buộc.");
+    const validationMessage = validateForm();
+    if (validationMessage) {
+      setFormError(validationMessage);
       return;
     }
 
     setSubmitting(true);
+    setFormError("");
     try {
       await userApi.update(editingId, {
         name: form.name.trim(),
@@ -102,7 +109,7 @@ export default function AdminUsersPage() {
         role: form.role,
       });
       cancelEdit();
-      await loadUsers({ page, search });
+      await loadUsers(query);
     } catch (err) {
       setFormError(getMessage(err));
     } finally {
@@ -111,115 +118,124 @@ export default function AdminUsersPage() {
   }
 
   async function handleDelete(user) {
-    if (!window.confirm(`Deactivate/delete user "${user.email}"?`)) return;
+    if (currentUser?.id === user.id) return;
+    const accepted = await confirm({
+      title: "Vô hiệu hóa tài khoản?",
+      message: `Tài khoản “${user.email}” sẽ được chuyển sang trạng thái ngừng hoạt động.`,
+      confirmLabel: "Vô hiệu hóa",
+      danger: true,
+    });
+    if (!accepted) return;
 
+    setDeletingId(user.id);
     setError("");
     try {
       await userApi.remove(user.id);
-      await loadUsers({ page, search });
+      if (editingId === user.id) cancelEdit();
+      await loadUsers(query);
     } catch (err) {
       setError(getMessage(err));
+    } finally {
+      setDeletingId(null);
     }
   }
 
-  const currentPage = meta?.page || page;
-  const totalPages = meta?.total_pages || 1;
+  const currentPage = Number(meta?.page || query.page);
+  const totalPages = Number(meta?.total_pages || 0);
+  const totalUsers = Number(meta?.total || users.length);
 
   return (
-    <div className="grid">
+    <div className="grid admin-page-grid">
       {editingId && (
-        <Card>
-          <h2>Edit User</h2>
+        <Card className="admin-form-card">
+          <div className="page-header compact-header">
+            <div>
+              <span className="eyebrow">Chỉnh sửa người dùng</span>
+              <h2>Sửa người dùng #{editingId}</h2>
+            </div>
+            <Button type="button" variant="secondary" onClick={cancelEdit}>Đóng form</Button>
+          </div>
           <ErrorMessage message={formError} />
           <form className="form-stack" onSubmit={handleSubmit}>
-            <div className="grid grid-2">
-              <Input label="Name" name="name" value={form.name} onChange={handleFormChange} />
-              <Input label="Email" name="email" type="email" value={form.email} onChange={handleFormChange} />
-              <Select label="Role" name="role" value={form.role} onChange={handleFormChange}>
-                <option value="user">user</option>
-                <option value="admin">admin</option>
+            <div className="grid admin-user-form-grid">
+              <Input label="Họ tên" name="name" required maxLength="100" value={form.name} onChange={handleFormChange} />
+              <Input label="Email" name="email" type="email" required maxLength="255" value={form.email} onChange={handleFormChange} />
+              <Select label="Vai trò" name="role" value={form.role} onChange={handleFormChange}>
+                <option value={ROLES.USER}>Người dùng</option>
+                <option value={ROLES.ADMIN}>Quản trị viên</option>
               </Select>
             </div>
+            {currentUser?.id === editingId && <p className="inline-note">Bạn đang sửa chính tài khoản admin đang đăng nhập.</p>}
             <div className="actions">
-              <Button type="submit" disabled={submitting}>
-                {submitting ? "Saving..." : "Save"}
-              </Button>
-              <Button type="button" variant="secondary" onClick={cancelEdit}>
-                Cancel
-              </Button>
+              <Button type="submit" disabled={submitting}>{submitting ? "Đang lưu..." : "Lưu người dùng"}</Button>
+              <Button type="button" variant="secondary" onClick={cancelEdit}>Hủy</Button>
             </div>
           </form>
         </Card>
       )}
 
-      <Card>
-        <div className="page-header">
+      <Card className="admin-list-card">
+        <div className="page-header admin-list-header">
           <div>
-            <h1>Users</h1>
-            <p className="muted">Quản lý tài khoản user/admin nếu backend user API được bật.</p>
+            <span className="eyebrow">Tài khoản hoạt động</span>
+            <h1>Quản lý người dùng</h1>
+            <p className="muted">{loading ? "Đang tải..." : `${totalUsers} tài khoản đang hoạt động.`}</p>
           </div>
-          <form className="actions" onSubmit={handleSearch}>
-            <Input placeholder="Search email/name" value={search} onChange={(event) => setSearch(event.target.value)} />
-            <Button type="submit">Search</Button>
+          <form className="admin-user-search" onSubmit={handleSearch}>
+            <Input aria-label="Tìm người dùng" placeholder="Tìm tên hoặc email..." value={searchDraft} onChange={(event) => setSearchDraft(event.target.value)} />
+            <Button type="submit" disabled={loading}>Tìm</Button>
+            <Button type="button" variant="secondary" disabled={loading} onClick={clearSearch}>Xóa lọc</Button>
           </form>
         </div>
 
         <ErrorMessage message={error} />
 
         {loading ? (
-          <Loading />
+          <Loading label="Đang tải người dùng..." variant="table" count={6} />
         ) : users.length === 0 ? (
-          <EmptyState title="Không có user" description="Thử đổi từ khóa tìm kiếm." />
+          <EmptyState title="Không có người dùng phù hợp" description="Thử tìm bằng tên hoặc email khác." />
         ) : (
           <Table
             rows={users}
             columns={[
               { key: "id", title: "ID" },
-              { key: "name", title: "Name" },
+              { key: "name", title: "Họ tên" },
               { key: "email", title: "Email" },
-              { key: "role", title: "Role", render: (user) => <Badge tone={user.role === "admin" ? "primary" : "default"}>{user.role}</Badge> },
-              {
-                key: "is_active",
-                title: "Active",
-                render: (user) => (
-                  <Badge tone={user.is_active ? "success" : "danger"}>{user.is_active ? "active" : "inactive"}</Badge>
-                ),
-              },
-              { key: "created_at", title: "Created", render: (user) => formatDate(user.created_at) || "N/A" },
+              { key: "role", title: "Vai trò", render: (user) => <Badge tone={user.role === ROLES.ADMIN ? "primary" : "default"}>{user.role === ROLES.ADMIN ? "Quản trị viên" : "Người dùng"}</Badge> },
+              { key: "status", title: "Trạng thái", render: () => <Badge tone="success">Đang hoạt động</Badge> },
+              { key: "created_at", title: "Ngày tạo", render: (user) => formatDate(user.created_at) || "—" },
               {
                 key: "actions",
-                title: "Action",
-                render: (user) => (
-                  <div className="actions">
-                    <Button type="button" onClick={() => startEdit(user)}>
-                      Edit
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="danger"
-                      disabled={currentUser?.id === user.id}
-                      onClick={() => handleDelete(user)}
-                    >
-                      Delete
-                    </Button>
-                  </div>
-                ),
+                title: "Thao tác",
+                render: (user) => {
+                  const isCurrentUser = currentUser?.id === user.id;
+                  return (
+                    <div className="actions table-actions">
+                      <Button type="button" variant="secondary" onClick={() => startEdit(user)}>Sửa</Button>
+                      <Button
+                        type="button"
+                        variant="danger"
+                        disabled={isCurrentUser || deletingId === user.id}
+                        title={isCurrentUser ? "Không thể vô hiệu hóa tài khoản đang đăng nhập" : "Vô hiệu hóa tài khoản"}
+                        onClick={() => handleDelete(user)}
+                      >
+                        {isCurrentUser ? "Tài khoản hiện tại" : deletingId === user.id ? "Đang xử lý..." : "Vô hiệu hóa"}
+                      </Button>
+                    </div>
+                  );
+                },
               },
             ]}
           />
         )}
 
-        <div className="pagination">
-          <Button type="button" variant="secondary" disabled={currentPage <= 1 || loading} onClick={() => setPage(currentPage - 1)}>
-            Previous
-          </Button>
-          <span>
-            Page {currentPage} / {totalPages}
-          </span>
-          <Button type="button" variant="secondary" disabled={currentPage >= totalPages || loading} onClick={() => setPage(currentPage + 1)}>
-            Next
-          </Button>
-        </div>
+        {totalPages > 1 && (
+          <div className="pagination">
+            <Button type="button" variant="secondary" disabled={currentPage <= 1 || loading} onClick={() => setQuery((current) => ({ ...current, page: currentPage - 1 }))}>Trang trước</Button>
+            <span>Trang {currentPage} / {totalPages}</span>
+            <Button type="button" variant="secondary" disabled={currentPage >= totalPages || loading} onClick={() => setQuery((current) => ({ ...current, page: currentPage + 1 }))}>Trang sau</Button>
+          </div>
+        )}
       </Card>
     </div>
   );

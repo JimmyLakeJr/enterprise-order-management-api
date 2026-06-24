@@ -3,10 +3,12 @@ package service
 import (
 	"context"
 	"fmt"
+	"math"
 
 	"enterprise-order-management-api/internal/dto"
 	"enterprise-order-management-api/internal/model"
 	"enterprise-order-management-api/internal/pkg/apperror"
+	"enterprise-order-management-api/internal/pkg/response"
 	"enterprise-order-management-api/internal/repository"
 
 	"github.com/jackc/pgx/v5"
@@ -15,7 +17,7 @@ import (
 
 type OrderService interface {
 	Create(ctx context.Context, userID int64, req dto.CreateOrderRequest) (*dto.OrderResponse, error)
-	List(ctx context.Context, userID int64, role string) ([]dto.OrderResponse, error)
+	List(ctx context.Context, userID int64, role string, query dto.OrderListQuery) ([]dto.OrderResponse, response.Meta, error)
 	FindByID(ctx context.Context, orderID int64, userID int64, role string) (*dto.OrderResponse, error)
 	UpdateStatus(ctx context.Context, orderID int64, status string) (*dto.OrderResponse, error)
 }
@@ -129,32 +131,50 @@ func (s *orderService) Create(ctx context.Context, userID int64, req dto.CreateO
 	return &response, nil
 }
 
-func (s *orderService) List(ctx context.Context, userID int64, role string) ([]dto.OrderResponse, error) {
+func (s *orderService) List(ctx context.Context, userID int64, role string, query dto.OrderListQuery) ([]dto.OrderResponse, response.Meta, error) {
 	var (
 		orders []model.Order
+		total  int64
 		err    error
 	)
 
+	query = normalizeOrderListQuery(query)
+	if query.Status != "" && !isValidOrderStatus(query.Status) {
+		return nil, response.Meta{}, apperror.BadRequest("Invalid order status filter")
+	}
+
 	if role == model.RoleAdmin {
-		orders, err = s.orders.ListAll(ctx, s.db)
+		orders, total, err = s.orders.ListAll(ctx, s.db, query)
 	} else {
-		orders, err = s.orders.ListByUserID(ctx, s.db, userID)
+		orders, total, err = s.orders.ListByUserID(ctx, s.db, userID, query)
 	}
 	if err != nil {
-		return nil, err
+		return nil, response.Meta{}, err
+	}
+
+	orderIDs := make([]int64, 0, len(orders))
+	for i := range orders {
+		orderIDs = append(orderIDs, orders[i].ID)
+	}
+
+	itemsByOrderID, err := s.orders.FindItemsByOrderIDs(ctx, s.db, orderIDs)
+	if err != nil {
+		return nil, response.Meta{}, err
 	}
 
 	responses := make([]dto.OrderResponse, 0, len(orders))
 	for i := range orders {
-		items, err := s.orders.FindItemsByOrderID(ctx, s.db, orders[i].ID)
-		if err != nil {
-			return nil, err
-		}
-		orders[i].Items = items
+		orders[i].Items = itemsByOrderID[orders[i].ID]
 		responses = append(responses, ToOrderResponse(&orders[i]))
 	}
 
-	return responses, nil
+	totalPages := int(math.Ceil(float64(total) / float64(query.Limit)))
+	return responses, response.Meta{
+		Page:       query.Page,
+		Limit:      query.Limit,
+		Total:      total,
+		TotalPages: totalPages,
+	}, nil
 }
 
 func (s *orderService) FindByID(ctx context.Context, orderID int64, userID int64, role string) (*dto.OrderResponse, error) {
@@ -246,6 +266,19 @@ func mergeOrderItems(items []dto.CreateOrderItemRequest) map[int64]int {
 	return quantities
 }
 
+func normalizeOrderListQuery(query dto.OrderListQuery) dto.OrderListQuery {
+	if query.Page < 1 {
+		query.Page = 1
+	}
+	if query.Limit < 1 {
+		query.Limit = 10
+	}
+	if query.Limit > 100 {
+		query.Limit = 100
+	}
+	return query
+}
+
 func ToOrderResponse(order *model.Order) dto.OrderResponse {
 	items := make([]dto.OrderItemResponse, 0, len(order.Items))
 	for _, item := range order.Items {
@@ -261,11 +294,21 @@ func ToOrderResponse(order *model.Order) dto.OrderResponse {
 		items = append(items, response)
 	}
 
-	return dto.OrderResponse{
+	res := dto.OrderResponse{
 		ID:          order.ID,
 		UserID:      order.UserID,
 		Status:      order.Status,
 		TotalAmount: order.TotalAmount,
+		CreatedAt:   order.CreatedAt,
+		UpdatedAt:   order.UpdatedAt,
 		Items:       items,
 	}
+	if order.User != nil {
+		res.User = &dto.OrderUserSummary{
+			ID:    order.User.ID,
+			Name:  order.User.Name,
+			Email: order.User.Email,
+		}
+	}
+	return res
 }

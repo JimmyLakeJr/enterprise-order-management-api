@@ -1,12 +1,19 @@
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { authApi } from "../api/authApi";
+import { userApi } from "../api/userApi";
 import { clearAuthStorage, getAccessToken, getRefreshToken, saveAuthTokens } from "../api/apiClient";
+import { AUTH_EVENTS, ROLES, STORAGE_KEYS } from "../constants/domain";
 
 const AuthContext = createContext(null);
 
 function readStoredUser() {
-  const raw = localStorage.getItem("user");
-  return raw ? JSON.parse(raw) : null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.USER);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    localStorage.removeItem(STORAGE_KEYS.USER);
+    return null;
+  }
 }
 
 export function AuthProvider({ children }) {
@@ -15,23 +22,17 @@ export function AuthProvider({ children }) {
   const [refreshToken, setRefreshToken] = useState(getRefreshToken);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadMe();
-
-    function handleForcedLogout() {
-      setUser(null);
-      setAccessToken(null);
-      setRefreshToken(null);
-    }
-
-    window.addEventListener("auth:logout", handleForcedLogout);
-    return () => window.removeEventListener("auth:logout", handleForcedLogout);
+  const clearAuthData = useCallback(() => {
+    clearAuthStorage();
+    setUser(null);
+    setAccessToken(null);
+    setRefreshToken(null);
   }, []);
 
-  function applyAuthData(data) {
+  const applyAuthData = useCallback((data) => {
     const nextAccessToken = data?.access_token || getAccessToken();
     const nextRefreshToken = data?.refresh_token || getRefreshToken();
-    const nextUser = data?.user || data;
+    const nextUser = data?.user || null;
 
     saveAuthTokens({
       accessToken: nextAccessToken,
@@ -39,32 +40,31 @@ export function AuthProvider({ children }) {
     });
 
     if (nextUser) {
-      localStorage.setItem("user", JSON.stringify(nextUser));
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(nextUser));
       setUser(nextUser);
     }
 
     setAccessToken(nextAccessToken);
     setRefreshToken(nextRefreshToken);
-  }
+  }, []);
 
-  function clearAuthData() {
-    clearAuthStorage();
-    setUser(null);
-    setAccessToken(null);
-    setRefreshToken(null);
-  }
-
-  async function loadMe() {
-    const token = getAccessToken();
-    if (!token) {
-      setLoading(false);
-      return null;
-    }
-
+  const loadMe = useCallback(async () => {
     setLoading(true);
+
     try {
+      if (!getAccessToken()) {
+        const storedRefreshToken = getRefreshToken();
+        if (!storedRefreshToken) {
+          clearAuthData();
+          return null;
+        }
+
+        const refreshed = await authApi.refreshToken(storedRefreshToken);
+        applyAuthData(refreshed);
+      }
+
       const me = await authApi.getMe();
-      localStorage.setItem("user", JSON.stringify(me));
+      localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(me));
       setUser(me);
       setAccessToken(getAccessToken());
       setRefreshToken(getRefreshToken());
@@ -75,9 +75,31 @@ export function AuthProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [applyAuthData, clearAuthData]);
 
-  async function login(payload) {
+  useEffect(() => {
+    const loadTimer = window.setTimeout(() => void loadMe(), 0);
+
+    function handleForcedLogout() {
+      setUser(null);
+      setAccessToken(null);
+      setRefreshToken(null);
+    }
+
+    function handleTokenRefresh(event) {
+      applyAuthData(event.detail);
+    }
+
+    window.addEventListener(AUTH_EVENTS.LOGOUT, handleForcedLogout);
+    window.addEventListener(AUTH_EVENTS.REFRESHED, handleTokenRefresh);
+    return () => {
+      window.clearTimeout(loadTimer);
+      window.removeEventListener(AUTH_EVENTS.LOGOUT, handleForcedLogout);
+      window.removeEventListener(AUTH_EVENTS.REFRESHED, handleTokenRefresh);
+    };
+  }, [applyAuthData, loadMe]);
+
+  const login = useCallback(async (payload) => {
     setLoading(true);
     try {
       const data = await authApi.login(payload);
@@ -86,9 +108,9 @@ export function AuthProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [applyAuthData]);
 
-  async function register(payload) {
+  const register = useCallback(async (payload) => {
     setLoading(true);
     try {
       const data = await authApi.register(payload);
@@ -97,15 +119,50 @@ export function AuthProvider({ children }) {
     } finally {
       setLoading(false);
     }
-  }
+  }, [applyAuthData]);
 
-  async function logout() {
+  const logout = useCallback(async () => {
     const currentRefreshToken = getRefreshToken();
-    if (currentRefreshToken) {
-      await authApi.logout(currentRefreshToken).catch(() => {});
+    try {
+      if (currentRefreshToken) await authApi.logout(currentRefreshToken);
+    } catch {
+      // Local logout must still succeed when the access token is already invalid.
+    } finally {
+      clearAuthData();
     }
-    clearAuthData();
-  }
+  }, [clearAuthData]);
+
+  const updateProfile = useCallback(async (payload) => {
+    const updatedUser = await userApi.updateMe(payload);
+    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
+    setUser(updatedUser);
+    return updatedUser;
+  }, []);
+
+  const uploadAvatar = useCallback(async (file) => {
+    const updatedUser = await userApi.uploadAvatar(file);
+    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
+    setUser(updatedUser);
+    return updatedUser;
+  }, []);
+
+  const uploadProfileVideo = useCallback(async (file) => {
+    const updatedUser = await userApi.uploadProfileVideo(file);
+    localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
+    setUser(updatedUser);
+    return updatedUser;
+  }, []);
+
+  const completeOAuthLogin = useCallback(async ({ accessToken: nextAccessToken, refreshToken: nextRefreshToken }) => {
+    saveAuthTokens({
+      accessToken: nextAccessToken,
+      refreshToken: nextRefreshToken,
+    });
+    setAccessToken(nextAccessToken);
+    setRefreshToken(nextRefreshToken);
+    const me = await loadMe();
+    return me;
+  }, [loadMe]);
 
   const value = useMemo(
     () => ({
@@ -114,13 +171,17 @@ export function AuthProvider({ children }) {
       refreshToken,
       loading,
       isAuthenticated: Boolean(accessToken && user),
-      isAdmin: user?.role === "admin",
+      isAdmin: user?.role === ROLES.ADMIN,
       register,
       login,
       logout,
       loadMe,
+      updateProfile,
+      uploadAvatar,
+      uploadProfileVideo,
+      completeOAuthLogin,
     }),
-    [user, accessToken, refreshToken, loading]
+    [accessToken, completeOAuthLogin, loadMe, loading, login, logout, refreshToken, register, updateProfile, uploadAvatar, uploadProfileVideo, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

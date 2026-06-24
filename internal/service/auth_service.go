@@ -7,6 +7,7 @@ import (
 	"enterprise-order-management-api/internal/config"
 	"enterprise-order-management-api/internal/dto"
 	"enterprise-order-management-api/internal/model"
+	"enterprise-order-management-api/internal/oauth"
 	"enterprise-order-management-api/internal/pkg/apperror"
 	"enterprise-order-management-api/internal/pkg/hasher"
 	"enterprise-order-management-api/internal/pkg/password"
@@ -17,18 +18,35 @@ import (
 type AuthService interface {
 	Register(ctx context.Context, req dto.RegisterRequest) (*dto.AuthResponse, error)
 	Login(ctx context.Context, req dto.LoginRequest) (*dto.AuthResponse, error)
+	BeginGoogleLogin(ctx context.Context) (string, string, error)
+	CompleteGoogleLogin(ctx context.Context, code string) (*dto.AuthResponse, error)
 	Refresh(ctx context.Context, refreshToken string) (*dto.AuthResponse, error)
 	Logout(ctx context.Context, refreshToken string) error
 	Me(ctx context.Context, userID int64) (*dto.UserResponse, error)
 }
 
 type authService struct {
-	users repository.UserRepository
-	cfg   config.Config
+	db            repository.TxBeginner
+	users         repository.UserRepository
+	oauthAccounts repository.OAuthAccountRepository
+	google        oauth.GoogleProviderClient
+	cfg           config.Config
 }
 
-func NewAuthService(users repository.UserRepository, cfg config.Config) AuthService {
-	return &authService{users: users, cfg: cfg}
+func NewAuthService(
+	db repository.TxBeginner,
+	users repository.UserRepository,
+	oauthAccounts repository.OAuthAccountRepository,
+	google oauth.GoogleProviderClient,
+	cfg config.Config,
+) AuthService {
+	return &authService{
+		db:            db,
+		users:         users,
+		oauthAccounts: oauthAccounts,
+		google:        google,
+		cfg:           cfg,
+	}
 }
 
 func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*dto.AuthResponse, error) {
@@ -156,12 +174,14 @@ func ToUserResponse(user *model.User) dto.UserResponse {
 		return dto.UserResponse{}
 	}
 	return dto.UserResponse{
-		ID:        user.ID,
-		Name:      user.Name,
-		Email:     user.Email,
-		Role:      user.Role,
-		IsActive:  user.IsActive,
-		CreatedAt: user.CreatedAt,
-		UpdatedAt: user.UpdatedAt,
+		ID:              user.ID,
+		Name:            user.Name,
+		Email:           user.Email,
+		AvatarURL:       user.AvatarURL,
+		ProfileVideoURL: user.ProfileVideoURL,
+		Role:            user.Role,
+		IsActive:        user.IsActive,
+		CreatedAt:       user.CreatedAt,
+		UpdatedAt:       user.UpdatedAt,
 	}
 }

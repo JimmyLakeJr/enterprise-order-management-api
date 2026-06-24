@@ -1,4 +1,4 @@
-FROM golang:1.23-alpine AS builder
+FROM golang:1.25.5-alpine3.23 AS builder
 
 WORKDIR /app
 
@@ -8,10 +8,11 @@ RUN go mod download
 COPY . .
 RUN CGO_ENABLED=0 GOOS=linux go build -o /app/server ./cmd/api
 
-FROM alpine:3.20
+FROM alpine:3.23
 
 WORKDIR /app
 COPY --from=builder /app/server /app/server
+RUN mkdir -p /app/uploads
 
 EXPOSE 8080
 

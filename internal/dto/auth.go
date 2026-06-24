@@ -28,11 +28,13 @@ type AuthResponse struct {
 }
 
 type UserResponse struct {
-	ID        int64     `json:"id"`
-	Name      string    `json:"name"`
-	Email     string    `json:"email"`
-	Role      string    `json:"role"`
-	IsActive  bool      `json:"is_active"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID              int64     `json:"id"`
+	Name            string    `json:"name"`
+	Email           string    `json:"email"`
+	AvatarURL       string    `json:"avatar_url"`
+	ProfileVideoURL string    `json:"profile_video_url"`
+	Role            string    `json:"role"`
+	IsActive        bool      `json:"is_active"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }

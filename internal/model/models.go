@@ -15,22 +15,18 @@ const (
 	OrderStatusCancelled = "cancelled"
 )
 
-type Role struct {
-	ID        int64
-	Name      string
-	CreatedAt time.Time
-}
-
 type User struct {
-	ID           int64
-	Name         string
-	Email        string
-	PasswordHash string
-	RoleID       int64
-	Role         string
-	IsActive     bool
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	ID              int64
+	Name            string
+	Email           string
+	PasswordHash    string
+	AvatarURL       string
+	ProfileVideoURL string
+	RoleID          int64
+	Role            string
+	IsActive        bool
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 type RefreshToken struct {
@@ -40,6 +36,17 @@ type RefreshToken struct {
 	ExpiresAt time.Time
 	RevokedAt *time.Time
 	CreatedAt time.Time
+}
+
+type OAuthAccount struct {
+	ID             int64
+	UserID         int64
+	Provider       string
+	ProviderUserID string
+	Email          string
+	AvatarURL      string
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type Category struct {
@@ -72,6 +79,7 @@ type Order struct {
 	TotalAmount int64
 	CreatedAt   time.Time
 	UpdatedAt   time.Time
+	User        *User
 	Items       []OrderItem
 }
 

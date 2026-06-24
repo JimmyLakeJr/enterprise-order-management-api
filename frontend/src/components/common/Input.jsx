@@ -1,8 +1,8 @@
-export default function Input({ label, error, ...props }) {
+export default function Input({ label, error, className = "", fieldClassName = "", ...props }) {
   return (
-    <label className="field">
+    <label className={`field ${fieldClassName}`.trim()}>
       {label && <span>{label}</span>}
-      <input {...props} />
+      <input className={className} aria-invalid={Boolean(error)} {...props} />
       {error && <small className="field-error">{error}</small>}
     </label>
   );

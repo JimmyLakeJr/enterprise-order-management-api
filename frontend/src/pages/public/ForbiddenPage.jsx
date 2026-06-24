@@ -1,15 +1,15 @@
 import { Link } from "react-router-dom";
 import Button from "../../components/common/Button";
-import Card from "../../components/common/Card";
+import GlassCard from "../../components/common/GlassCard";
 
 export default function ForbiddenPage() {
   return (
-    <Card>
-      <h1>Forbidden</h1>
-      <p className="muted">Your account does not have permission to access this page.</p>
+    <GlassCard strong>
+      <h1>Không có quyền truy cập</h1>
+      <p className="muted">Tài khoản của bạn không có quyền mở trang này.</p>
       <Link to="/">
-        <Button>Back to products</Button>
+        <Button>Về trang sản phẩm</Button>
       </Link>
-    </Card>
+    </GlassCard>
   );
 }

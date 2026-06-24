@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { getMessage } from "../../api/apiClient";
 import { getCategories } from "../../api/categoryApi";
 import { getProducts } from "../../api/productApi";
 import Button from "../../components/common/Button";
@@ -8,6 +9,7 @@ import Input from "../../components/common/Input";
 import Loading from "../../components/common/Loading";
 import Select from "../../components/common/Select";
 import ProductCard from "../../components/products/ProductCard";
+import Toast from "../../components/common/Toast";
 import { useCart } from "../../contexts/CartContext";
 
 const DEFAULT_FILTERS = {
@@ -21,80 +23,120 @@ const DEFAULT_FILTERS = {
 
 export default function ProductListPage() {
   const { addToCart } = useCart();
+  const requestIdRef = useRef(0);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [meta, setMeta] = useState(null);
-  const [filters, setFilters] = useState(DEFAULT_FILTERS);
+  const [draftFilters, setDraftFilters] = useState(DEFAULT_FILTERS);
+  const [appliedFilters, setAppliedFilters] = useState(DEFAULT_FILTERS);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [filterError, setFilterError] = useState("");
+  const [categoryError, setCategoryError] = useState("");
   const [successMessage, setSuccessMessage] = useState("");
+  const [retryToken, setRetryToken] = useState(0);
 
   useEffect(() => {
+    let active = true;
+
     getCategories()
-      .then(setCategories)
-      .catch(() => setCategories([]));
+      .then((data) => {
+        if (active) setCategories(data);
+      })
+      .catch((err) => {
+        if (active) setCategoryError(`Không tải được danh mục: ${getMessage(err)}`);
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
 
   useEffect(() => {
-    loadProducts(filters);
-  }, [filters.page]);
+    const requestId = ++requestIdRef.current;
 
-  async function loadProducts(nextFilters) {
-    setLoading(true);
-    setError("");
-    try {
-      const result = await getProducts(nextFilters);
-      setProducts(result.data);
-      setMeta(result.meta);
-    } catch {
-      setError("Không tải được danh sách sản phẩm. Vui lòng kiểm tra backend API.");
-    } finally {
-      setLoading(false);
+    async function loadProducts() {
+      setLoading(true);
+      setError("");
+
+      try {
+        const result = await getProducts(appliedFilters);
+        if (requestId !== requestIdRef.current) return;
+        setProducts(result.data);
+        setMeta(result.meta);
+      } catch (err) {
+        if (requestId !== requestIdRef.current) return;
+        setProducts([]);
+        setMeta(null);
+        setError(`Không tải được danh sách sản phẩm: ${getMessage(err)}`);
+      } finally {
+        if (requestId === requestIdRef.current) setLoading(false);
+      }
     }
-  }
+
+    loadProducts();
+  }, [appliedFilters, retryToken]);
 
   function handleChange(event) {
     const { name, value } = event.target;
-    setFilters((current) => ({ ...current, [name]: value }));
+    setDraftFilters((current) => ({ ...current, [name]: value }));
+    setFilterError("");
   }
 
   function handleSubmit(event) {
     event.preventDefault();
-    const nextFilters = { ...filters, page: 1 };
-    setFilters(nextFilters);
-    loadProducts(nextFilters);
+    const minPrice = draftFilters.min_price === "" ? null : Number(draftFilters.min_price);
+    const maxPrice = draftFilters.max_price === "" ? null : Number(draftFilters.max_price);
+
+    if (minPrice !== null && maxPrice !== null && minPrice > maxPrice) {
+      setFilterError("Giá tối thiểu không được lớn hơn giá tối đa.");
+      return;
+    }
+
+    setFilterError("");
+    setAppliedFilters({ ...draftFilters, keyword: draftFilters.keyword.trim(), page: 1 });
   }
 
   function handleReset() {
-    setFilters(DEFAULT_FILTERS);
-    loadProducts(DEFAULT_FILTERS);
+    setDraftFilters(DEFAULT_FILTERS);
+    setAppliedFilters(DEFAULT_FILTERS);
+    setFilterError("");
   }
 
   function handleAddToCart(product) {
     addToCart(product, 1);
-    setSuccessMessage(`Đã thêm "${product.name}" vào giỏ hàng.`);
-    window.setTimeout(() => setSuccessMessage(""), 1800);
+    setSuccessMessage(`Đã thêm “${product.name}” vào giỏ hàng.`);
   }
 
   function goToPage(page) {
-    setFilters((current) => ({ ...current, page }));
+    setAppliedFilters((current) => ({ ...current, page }));
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
-  const currentPage = meta?.page || filters.page;
-  const totalPages = meta?.total_pages || 1;
+  const currentPage = Number(meta?.page || appliedFilters.page);
+  const totalPages = Number(meta?.total_pages || 0);
+  const totalProducts = Number(meta?.total || products.length);
 
   return (
     <>
-      <div className="page-header">
+      <header className="page-header product-list-header">
         <div>
-          <h1>Sản phẩm</h1>
-          <p className="muted">Tìm kiếm sản phẩm, xem tồn kho và thêm vào giỏ hàng để tạo đơn.</p>
+          <span className="eyebrow">Danh mục sản phẩm</span>
+          <h1>Chọn sản phẩm phù hợp với bạn</h1>
+          <p className="muted">Tìm kiếm theo tên, danh mục và khoảng giá từ dữ liệu sản phẩm hiện có.</p>
         </div>
-      </div>
+        {!loading && !error && <span className="result-count">{totalProducts} sản phẩm</span>}
+      </header>
 
-      <form className="filters" onSubmit={handleSubmit}>
-        <Input name="keyword" placeholder="Tìm theo tên sản phẩm" value={filters.keyword} onChange={handleChange} />
-        <Select name="category_id" value={filters.category_id} onChange={handleChange}>
+      <form className="filters" onSubmit={handleSubmit} aria-label="Bộ lọc sản phẩm">
+        <Input
+          label="Từ khóa"
+          name="keyword"
+          placeholder="Nhập tên sản phẩm..."
+          value={draftFilters.keyword}
+          onChange={handleChange}
+        />
+        <Select label="Danh mục" name="category_id" value={draftFilters.category_id} onChange={handleChange}>
           <option value="">Tất cả danh mục</option>
           {categories.map((category) => (
             <option key={category.id} value={category.id}>
@@ -102,23 +144,43 @@ export default function ProductListPage() {
             </option>
           ))}
         </Select>
-        <Input name="min_price" type="number" min="0" placeholder="Giá từ" value={filters.min_price} onChange={handleChange} />
-        <Input name="max_price" type="number" min="0" placeholder="Giá đến" value={filters.max_price} onChange={handleChange} />
+        <Input
+          label="Giá từ"
+          name="min_price"
+          type="number"
+          min="0"
+          step="1"
+          placeholder="0"
+          value={draftFilters.min_price}
+          onChange={handleChange}
+        />
+        <Input
+          label="Giá đến"
+          name="max_price"
+          type="number"
+          min="0"
+          step="1"
+          placeholder="Không giới hạn"
+          value={draftFilters.max_price}
+          onChange={handleChange}
+        />
         <div className="filter-actions">
-          <Button type="submit">Tìm kiếm</Button>
-          <Button type="button" variant="secondary" onClick={handleReset}>
+          <Button type="submit" disabled={loading}>Áp dụng</Button>
+          <Button type="button" variant="secondary" onClick={handleReset} disabled={loading}>
             Xóa lọc
           </Button>
         </div>
       </form>
 
-      {successMessage && <div className="alert alert-success">{successMessage}</div>}
-      <ErrorMessage message={error} />
+      <ErrorMessage message={filterError} />
+      <ErrorMessage message={categoryError} />
+      <ErrorMessage message={error} onRetry={() => setRetryToken((current) => current + 1)} />
+      <Toast message={successMessage} tone="success" onDismiss={() => setSuccessMessage("")} />
 
       {loading ? (
-        <Loading />
-      ) : products.length === 0 ? (
-        <EmptyState title="Không có sản phẩm" description="Thử thay đổi từ khóa, danh mục hoặc khoảng giá." />
+        <Loading label="Đang tải sản phẩm..." variant="cards" count={8} />
+      ) : error ? null : products.length === 0 ? (
+        <EmptyState title="Không tìm thấy sản phẩm" description="Hãy thử từ khóa, danh mục hoặc khoảng giá khác." />
       ) : (
         <div className="grid product-grid">
           {products.map((product) => (
@@ -127,17 +189,17 @@ export default function ProductListPage() {
         </div>
       )}
 
-      <div className="pagination">
-        <Button type="button" variant="secondary" disabled={currentPage <= 1 || loading} onClick={() => goToPage(currentPage - 1)}>
-          Previous
-        </Button>
-        <span>
-          Page {currentPage} / {totalPages}
-        </span>
-        <Button type="button" variant="secondary" disabled={currentPage >= totalPages || loading} onClick={() => goToPage(currentPage + 1)}>
-          Next
-        </Button>
-      </div>
+      {!error && totalPages > 1 && (
+        <nav className="pagination" aria-label="Phân trang sản phẩm">
+          <Button type="button" variant="secondary" disabled={currentPage <= 1 || loading} onClick={() => goToPage(currentPage - 1)}>
+            Trang trước
+          </Button>
+          <span>Trang {currentPage} / {totalPages}</span>
+          <Button type="button" variant="secondary" disabled={currentPage >= totalPages || loading} onClick={() => goToPage(currentPage + 1)}>
+            Trang sau
+          </Button>
+        </nav>
+      )}
     </>
   );
 }

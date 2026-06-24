@@ -19,6 +19,7 @@ type ProductRepository interface {
 	List(ctx context.Context, query dto.ProductListQuery) ([]model.Product, int64, error)
 	Update(ctx context.Context, product *model.Product) error
 	SoftDelete(ctx context.Context, id int64) error
+	Restore(ctx context.Context, id int64) error
 }
 
 type productRepository struct {
@@ -171,8 +172,30 @@ func (r *productRepository) SoftDelete(ctx context.Context, id int64) error {
 	return nil
 }
 
+func (r *productRepository) Restore(ctx context.Context, id int64) error {
+	query := `UPDATE products SET is_active = TRUE, updated_at = NOW() WHERE id = $1 AND is_active = FALSE`
+	commandTag, err := r.db.Exec(ctx, query, id)
+	if err != nil {
+		return err
+	}
+	if commandTag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
 func buildProductWhere(query dto.ProductListQuery) (string, []any) {
-	conditions := []string{"p.is_active = TRUE", "c.is_active = TRUE"}
+	conditions := make([]string, 0)
+	if query.Admin {
+		switch query.Status {
+		case "active":
+			conditions = append(conditions, "p.is_active = TRUE")
+		case "inactive":
+			conditions = append(conditions, "p.is_active = FALSE")
+		}
+	} else {
+		conditions = append(conditions, "p.is_active = TRUE", "c.is_active = TRUE")
+	}
 	args := make([]any, 0)
 
 	if query.Search != "" {
@@ -195,6 +218,9 @@ func buildProductWhere(query dto.ProductListQuery) (string, []any) {
 		conditions = append(conditions, fmt.Sprintf("p.price <= $%d", len(args)))
 	}
 
+	if len(conditions) == 0 {
+		return "", args
+	}
 	return "WHERE " + strings.Join(conditions, " AND "), args
 }
 
