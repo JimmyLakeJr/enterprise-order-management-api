@@ -64,7 +64,7 @@ npm run dev
 Tài khoản admin local:
 
 - Email: `admin@example.com`
-- Password: `Admin@123`
+- Password: `123456`
 
 Credential đã xác minh trên volume local hiện tại:
 

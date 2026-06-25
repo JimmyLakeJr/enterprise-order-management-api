@@ -12,12 +12,11 @@ export default function LoginPage() {
   const { login, loading } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const [form, setForm] = useState({ email: "", password: "" });
+  const [form, setForm] = useState({ identifier: "", password: "" });
   const [error, setError] = useState("");
 
   function validate() {
-    if (!form.email.trim()) return "Vui lòng nhập email.";
-    if (!form.email.includes("@")) return "Email không hợp lệ.";
+    if (!form.identifier.trim()) return "Vui lòng nhập email hoặc số điện thoại.";
     if (!form.password) return "Vui lòng nhập mật khẩu.";
     return "";
   }
@@ -49,15 +48,14 @@ export default function LoginPage() {
     <div className="auth-shell">
       <GlassCard strong className="auth-card">
         <h1>Đăng nhập</h1>
-        <p className="muted">Truy cập hệ thống để tạo đơn hàng, theo dõi tồn kho và quản lý tài khoản.</p>
+        <p className="muted">Truy cập hệ thống bằng email hoặc số điện thoại để tạo đơn hàng và quản lý tài khoản.</p>
         <ErrorMessage message={error} />
         <form className="form-stack" onSubmit={handleSubmit}>
           <Input
-            label="Email"
-            type="email"
-            autoComplete="email"
-            value={form.email}
-            onChange={(event) => setForm({ ...form, email: event.target.value })}
+            label="Email hoặc số điện thoại"
+            autoComplete="username"
+            value={form.identifier}
+            onChange={(event) => setForm({ ...form, identifier: event.target.value })}
           />
           <Input
             label="Mật khẩu"

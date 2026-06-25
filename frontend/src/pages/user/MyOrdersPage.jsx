@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { orderApi } from "../../api/orderApi";
 import Badge from "../../components/common/Badge";
 import Button from "../../components/common/Button";
@@ -10,7 +10,10 @@ import Loading from "../../components/common/Loading";
 import Select from "../../components/common/Select";
 import Table from "../../components/common/Table";
 import { ORDER_STATUSES } from "../../constants/domain";
+import { useAuth } from "../../contexts/AuthContext";
+import { useCart } from "../../contexts/CartContext";
 import { formatCurrency } from "../../utils/formatCurrency";
+import { buildOrderDraftFromCart, saveOrderDraft } from "../../utils/orderDraft";
 import { getOrderStatus, getOrderStatusLabel } from "../../utils/orderStatus";
 
 const INITIAL_QUERY = {
@@ -20,11 +23,16 @@ const INITIAL_QUERY = {
 };
 
 export default function MyOrdersPage() {
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const { items } = useCart();
   const [orders, setOrders] = useState([]);
   const [meta, setMeta] = useState(null);
   const [query, setQuery] = useState(INITIAL_QUERY);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [successMessage, setSuccessMessage] = useState(location.state?.successMessage || "");
 
   async function loadOrders(params = query) {
     setLoading(true);
@@ -48,6 +56,11 @@ export default function MyOrdersPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [query]);
 
+  function handleStartOrder() {
+    saveOrderDraft(buildOrderDraftFromCart(items, user), user?.id || null);
+    navigate("/orders/new");
+  }
+
   const currentPage = Number(meta?.page || query.page);
   const totalPages = Number(meta?.total_pages || 0);
   const totalOrders = Number(meta?.total || orders.length);
@@ -69,9 +82,17 @@ export default function MyOrdersPage() {
             <option value="">Tất cả trạng thái</option>
             {ORDER_STATUSES.map((status) => <option key={status} value={status}>{getOrderStatusLabel(status)}</option>)}
           </Select>
+          <Button type="button" onClick={handleStartOrder}>Tạo đơn hàng</Button>
           <Link className="btn btn-secondary" to="/products">Tiếp tục mua sắm</Link>
         </div>
       </div>
+
+      {successMessage && (
+        <div className="alert alert-success order-flow-alert">
+          <span>{successMessage}</span>
+          <button type="button" className="inline-dismiss" onClick={() => setSuccessMessage("")}>Đóng</button>
+        </div>
+      )}
 
       {loading ? (
         <Loading label="Đang tải đơn hàng..." variant="table" count={5} />
@@ -81,7 +102,13 @@ export default function MyOrdersPage() {
           <Button onClick={() => loadOrders(query)}>Thử lại</Button>
         </div>
       ) : !orders?.length ? (
-        <EmptyState title="Chưa có đơn hàng" description="Đơn hàng bạn tạo sẽ xuất hiện tại đây." />
+        <div className="order-empty-stack">
+          <EmptyState title="Chưa có đơn hàng" description="Đơn hàng bạn tạo sẽ xuất hiện tại đây." />
+          <div className="actions">
+            <Button type="button" onClick={handleStartOrder}>Tạo đơn hàng</Button>
+            <Link className="btn btn-secondary" to="/products">Chọn sản phẩm</Link>
+          </div>
+        </div>
       ) : (
         <Table
           caption={`${orders.length} đơn hàng`}

@@ -5,9 +5,11 @@ import (
 	"math"
 	"mime/multipart"
 	"strings"
+	"unicode"
 
 	"enterprise-order-management-api/internal/dto"
 	"enterprise-order-management-api/internal/pkg/apperror"
+	"enterprise-order-management-api/internal/pkg/password"
 	"enterprise-order-management-api/internal/pkg/response"
 	"enterprise-order-management-api/internal/repository"
 	"enterprise-order-management-api/internal/storage"
@@ -20,6 +22,7 @@ type UserService interface {
 	FindByID(ctx context.Context, id int64) (*dto.UserResponse, error)
 	Update(ctx context.Context, id int64, req dto.UpdateUserRequest) (*dto.UserResponse, error)
 	UpdateProfile(ctx context.Context, id int64, req dto.UpdateProfileRequest) (*dto.UserResponse, error)
+	ChangePassword(ctx context.Context, id int64, req dto.ChangePasswordRequest) error
 	UploadAvatar(ctx context.Context, id int64, file *multipart.FileHeader) (*dto.UserResponse, error)
 	UploadProfileVideo(ctx context.Context, id int64, file *multipart.FileHeader) (*dto.UserResponse, error)
 	Delete(ctx context.Context, id int64, currentUserID int64) error
@@ -77,15 +80,38 @@ func (s *userService) Update(ctx context.Context, id int64, req dto.UpdateUserRe
 	}
 
 	exists, err := s.users.ExistsByEmailOtherUser(ctx, req.Email, id)
-	if err != nil {
+	email := normalizeEmail(req.Email)
+	phone := normalizePhone(req.Phone)
+	if err := validateProfilePhone(req.Phone, phone); err != nil {
 		return nil, err
 	}
-	if exists {
-		return nil, apperror.Conflict("Email already exists")
+	if email == "" && phone == "" {
+		return nil, apperror.BadRequest("Email or phone is required")
 	}
 
-	user.Name = req.Name
-	user.Email = req.Email
+	if email != "" {
+		exists, err = s.users.ExistsByEmailOtherUser(ctx, email, id)
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			return nil, apperror.Conflict("Email already exists")
+		}
+	}
+
+	if phone != "" {
+		exists, err = s.users.ExistsByPhoneOtherUser(ctx, phone, id)
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			return nil, apperror.Conflict("Phone already exists")
+		}
+	}
+
+	user.Name = strings.TrimSpace(req.Name)
+	user.Email = email
+	user.Phone = phone
 	user.Role = req.Role
 
 	if err := s.users.Update(ctx, user); err != nil {
@@ -99,17 +125,75 @@ func (s *userService) Update(ctx context.Context, id int64, req dto.UpdateUserRe
 }
 
 func (s *userService) UpdateProfile(ctx context.Context, id int64, req dto.UpdateProfileRequest) (*dto.UserResponse, error) {
+	user, err := s.users.FindByID(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, apperror.NotFound("User not found")
+	}
+
 	name := strings.TrimSpace(req.Name)
 	if len(name) < 2 {
 		return nil, apperror.BadRequest("Tên hiển thị phải có ít nhất 2 ký tự")
 	}
-	if err := s.users.UpdateProfileName(ctx, id, name); err != nil {
+
+	phone := normalizePhone(req.Phone)
+	if err := validateProfilePhone(req.Phone, phone); err != nil {
+		return nil, err
+	}
+	if phone != "" {
+		exists, err := s.users.ExistsByPhoneOtherUser(ctx, phone, id)
+		if err != nil {
+			return nil, err
+		}
+		if exists {
+			return nil, apperror.Conflict("Phone already exists")
+		}
+	}
+
+	if err := s.users.UpdateProfile(ctx, id, name, phone); err != nil {
 		if err == pgx.ErrNoRows {
 			return nil, apperror.NotFound("User not found")
 		}
 		return nil, err
 	}
+
 	return s.FindByID(ctx, id)
+}
+
+func (s *userService) ChangePassword(ctx context.Context, id int64, req dto.ChangePasswordRequest) error {
+	user, err := s.users.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if user == nil {
+		return apperror.NotFound("User not found")
+	}
+
+	currentPassword := strings.TrimSpace(req.CurrentPassword)
+	newPassword := strings.TrimSpace(req.NewPassword)
+
+	if !password.Check(currentPassword, user.PasswordHash) {
+		return apperror.BadRequest("Current password is incorrect")
+	}
+	if currentPassword == newPassword {
+		return apperror.BadRequest("New password must be different from current password")
+	}
+
+	hashedPassword, err := password.Hash(newPassword)
+	if err != nil {
+		return err
+	}
+
+	if err := s.users.UpdatePasswordHash(ctx, id, hashedPassword); err != nil {
+		if err == pgx.ErrNoRows {
+			return apperror.NotFound("User not found")
+		}
+		return err
+	}
+
+	return nil
 }
 
 func (s *userService) Delete(ctx context.Context, id int64, currentUserID int64) error {
@@ -193,4 +277,31 @@ func normalizeUserListQuery(query dto.UserListQuery) dto.UserListQuery {
 		query.Limit = 100
 	}
 	return query
+}
+
+func validateProfilePhone(raw string, normalized string) error {
+	trimmed := strings.TrimSpace(raw)
+	if trimmed == "" {
+		return nil
+	}
+
+	for i, r := range trimmed {
+		switch {
+		case unicode.IsDigit(r):
+		case r == '+' && i == 0:
+		case r == ' ' || r == '(' || r == ')' || r == '-':
+		default:
+			return apperror.BadRequest("Phone format is invalid")
+		}
+	}
+
+	digitsOnly := normalized
+	if strings.HasPrefix(digitsOnly, "+") {
+		digitsOnly = digitsOnly[1:]
+	}
+	if len(digitsOnly) < 9 || len(digitsOnly) > 15 {
+		return apperror.BadRequest("Phone format is invalid")
+	}
+
+	return nil
 }

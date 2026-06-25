@@ -21,6 +21,9 @@ func TestAuthService_RegisterSuccess(t *testing.T) {
 	repo.findByEmailFunc = func(ctx context.Context, email string) (*model.User, error) {
 		return nil, nil
 	}
+	repo.findByPhoneAnyFunc = func(ctx context.Context, phone string) (*model.User, error) {
+		return nil, nil
+	}
 	repo.createFunc = func(ctx context.Context, user *model.User) error {
 		user.ID = 1
 		user.Role = model.RoleUser
@@ -70,11 +73,11 @@ func TestAuthService_LoginSuccess(t *testing.T) {
 	require.NoError(t, err)
 
 	repo := &mockUserRepository{}
-	repo.findByEmailFunc = func(ctx context.Context, email string) (*model.User, error) {
+	repo.findByIdentifierFunc = func(ctx context.Context, identifier string) (*model.User, error) {
 		return &model.User{
 			ID:           1,
 			Name:         "Nguyen Van A",
-			Email:        email,
+			Email:        "user@example.com",
 			PasswordHash: hashedPassword,
 			Role:         model.RoleUser,
 			IsActive:     true,
@@ -87,7 +90,7 @@ func TestAuthService_LoginSuccess(t *testing.T) {
 	service := NewAuthService(&mockTxBeginner{tx: &mockTx{}}, repo, &mockOAuthAccountRepository{}, &mockGoogleProvider{}, testConfig())
 
 	res, err := service.Login(context.Background(), dto.LoginRequest{
-		Email:    "user@example.com",
+		Identifier: "user@example.com",
 		Password: "123456",
 	})
 
@@ -101,10 +104,10 @@ func TestAuthService_LoginWrongPassword(t *testing.T) {
 	require.NoError(t, err)
 
 	repo := &mockUserRepository{}
-	repo.findByEmailFunc = func(ctx context.Context, email string) (*model.User, error) {
+	repo.findByIdentifierFunc = func(ctx context.Context, identifier string) (*model.User, error) {
 		return &model.User{
 			ID:           1,
-			Email:        email,
+			Email:        "user@example.com",
 			PasswordHash: hashedPassword,
 			Role:         model.RoleUser,
 		}, nil
@@ -113,12 +116,85 @@ func TestAuthService_LoginWrongPassword(t *testing.T) {
 	service := NewAuthService(&mockTxBeginner{tx: &mockTx{}}, repo, &mockOAuthAccountRepository{}, &mockGoogleProvider{}, testConfig())
 
 	res, err := service.Login(context.Background(), dto.LoginRequest{
-		Email:    "user@example.com",
+		Identifier: "user@example.com",
 		Password: "wrong-password",
 	})
 
 	require.Error(t, err)
 	require.Nil(t, res)
+}
+
+func TestAuthService_RegisterWithPhoneSuccess(t *testing.T) {
+	repo := &mockUserRepository{}
+	repo.findByPhoneAnyFunc = func(ctx context.Context, phone string) (*model.User, error) {
+		require.Equal(t, "0987654321", phone)
+		return nil, nil
+	}
+	repo.createFunc = func(ctx context.Context, user *model.User) error {
+		user.ID = 2
+		user.Role = model.RoleUser
+		user.IsActive = true
+		require.Equal(t, "", user.Email)
+		require.Equal(t, "0987654321", user.Phone)
+		return nil
+	}
+	repo.saveRefreshTokenFunc = func(ctx context.Context, userID int64, tokenHash string, expiresAt time.Time) error {
+		return nil
+	}
+
+	service := NewAuthService(&mockTxBeginner{tx: &mockTx{}}, repo, &mockOAuthAccountRepository{}, &mockGoogleProvider{}, testConfig())
+
+	res, err := service.Register(context.Background(), dto.RegisterRequest{
+		Name:     "Phone User",
+		Phone:    "0987 654 321",
+		Password: "123456",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "0987654321", res.User.Phone)
+}
+
+func TestAuthService_RegisterMissingEmailAndPhone(t *testing.T) {
+	service := NewAuthService(&mockTxBeginner{tx: &mockTx{}}, &mockUserRepository{}, &mockOAuthAccountRepository{}, &mockGoogleProvider{}, testConfig())
+
+	res, err := service.Register(context.Background(), dto.RegisterRequest{
+		Name:     "No Contact",
+		Password: "123456",
+	})
+
+	require.Error(t, err)
+	require.Nil(t, res)
+}
+
+func TestAuthService_LoginByPhoneSuccess(t *testing.T) {
+	hashedPassword, err := password.Hash("123456")
+	require.NoError(t, err)
+
+	repo := &mockUserRepository{}
+	repo.findByIdentifierFunc = func(ctx context.Context, identifier string) (*model.User, error) {
+		require.Equal(t, "0987654321", identifier)
+		return &model.User{
+			ID:           5,
+			Name:         "Phone Login",
+			Phone:        "0987654321",
+			PasswordHash: hashedPassword,
+			Role:         model.RoleUser,
+			IsActive:     true,
+		}, nil
+	}
+	repo.saveRefreshTokenFunc = func(ctx context.Context, userID int64, tokenHash string, expiresAt time.Time) error {
+		return nil
+	}
+
+	service := NewAuthService(&mockTxBeginner{tx: &mockTx{}}, repo, &mockOAuthAccountRepository{}, &mockGoogleProvider{}, testConfig())
+
+	res, err := service.Login(context.Background(), dto.LoginRequest{
+		Identifier: "0987 654 321",
+		Password:   "123456",
+	})
+
+	require.NoError(t, err)
+	require.Equal(t, "0987654321", res.User.Phone)
 }
 
 func testConfig() config.Config {

@@ -1,49 +1,63 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { getMessage } from "../../api/apiClient";
-import { createOrder } from "../../api/orderApi";
+import { cartApi } from "../../api/cartApi";
 import Button from "../../components/common/Button";
 import Card from "../../components/common/Card";
 import EmptyState from "../../components/common/EmptyState";
-import ErrorMessage from "../../components/common/ErrorMessage";
 import Table from "../../components/common/Table";
 import { useAuth } from "../../contexts/AuthContext";
 import { useCart } from "../../contexts/CartContext";
 import { formatCurrency } from "../../utils/formatCurrency";
+import { buildOrderDraftFromCart, saveOrderDraft } from "../../utils/orderDraft";
 
 export default function CartPage() {
   const { items, getCartTotal, updateQuantity, removeFromCart, clearCart } = useCart();
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
+  const [quote, setQuote] = useState(null);
+  const [quoteLoading, setQuoteLoading] = useState(false);
 
-  async function handleCreateOrder() {
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadQuote() {
+      if (!items.length) {
+        setQuote(null);
+        return;
+      }
+
+      setQuoteLoading(true);
+      try {
+        const result = await cartApi.quote({
+          items: items.map((item) => ({
+            product_id: item.product.id,
+            quantity: item.quantity,
+          })),
+        });
+        if (!cancelled) setQuote(result);
+      } catch {
+        if (!cancelled) setQuote(null);
+      } finally {
+        if (!cancelled) setQuoteLoading(false);
+      }
+    }
+
+    void loadQuote();
+    return () => {
+      cancelled = true;
+    };
+  }, [items]);
+
+  function handleCreateOrder() {
     if (!isAuthenticated) {
       navigate("/login", { state: { from: "/cart" } });
       return;
     }
 
-    if (!items.length || submitting) return;
+    if (!items.length) return;
 
-    setSubmitting(true);
-    setError("");
-
-    try {
-      const order = await createOrder({
-        items: items.map((item) => ({
-          product_id: item.product.id,
-          quantity: item.quantity,
-        })),
-      });
-
-      clearCart();
-      navigate(order?.id ? `/orders/${order.id}` : "/my-orders", { replace: true });
-    } catch (err) {
-      setError(`${getMessage(err)}. Tồn kho hoặc giá có thể đã thay đổi, vui lòng kiểm tra và thử lại.`);
-    } finally {
-      setSubmitting(false);
-    }
+    saveOrderDraft(buildOrderDraftFromCart(items, user), user?.id || null);
+    navigate("/orders/new");
   }
 
   if (items.length === 0) {
@@ -59,6 +73,7 @@ export default function CartPage() {
   }
 
   const frontendEstimate = getCartTotal();
+  const backendEstimate = quote?.final_amount ?? frontendEstimate;
 
   return (
     <Card className="cart-card">
@@ -66,15 +81,19 @@ export default function CartPage() {
         <div>
           <span className="eyebrow">Giỏ hàng</span>
           <h1>Kiểm tra sản phẩm</h1>
-          <p className="muted">Kiểm tra số lượng và giá tạm tính trước khi tạo đơn hàng.</p>
+          <p className="muted">Kiểm tra số lượng và giá tạm tính trước khi sang luồng tạo đơn hàng 3 bước.</p>
         </div>
         <div className="cart-header-total">
           <span>Tạm tính</span>
-          <strong className="cart-total">{formatCurrency(frontendEstimate)}</strong>
+          <strong className="cart-total">{formatCurrency(backendEstimate)}</strong>
         </div>
       </div>
 
-      <ErrorMessage message={error} />
+      {Array.isArray(quote?.warnings) && quote.warnings.length > 0 && (
+        <div className="api-gap-note warning-note">
+          {quote.warnings.map((warning) => <div key={warning}>{warning}</div>)}
+        </div>
+      )}
 
       <Table
         caption={`${items.length} dòng sản phẩm trong giỏ`}
@@ -130,15 +149,17 @@ export default function CartPage() {
 
       <div className="cart-summary">
         <div>
-          <span className="muted">Tổng tiền tạm tính</span>
-          <strong className="cart-total">{formatCurrency(frontendEstimate)}</strong>
-          <small className="muted">Giá trị chính thức được xác nhận khi tạo đơn.</small>
+          <span className="muted">Tổng tiền ước tính</span>
+          <strong className="cart-total">{formatCurrency(backendEstimate)}</strong>
+          <small className="muted">
+            {quoteLoading ? "Đang tính lại giá từ backend..." : "Giá trị chính thức được backend xác nhận ở bước thanh toán."}
+          </small>
         </div>
         <div className="actions cart-actions">
           <Link className="btn btn-secondary" to="/products">Tiếp tục mua</Link>
-          <Button type="button" variant="secondary" onClick={clearCart} disabled={submitting}>Xóa giỏ hàng</Button>
-          <Button type="button" onClick={handleCreateOrder} disabled={submitting}>
-            {submitting ? "Đang tạo đơn..." : isAuthenticated ? "Tạo đơn hàng" : "Đăng nhập để tạo đơn"}
+          <Button type="button" variant="secondary" onClick={clearCart}>Xóa giỏ hàng</Button>
+          <Button type="button" onClick={handleCreateOrder}>
+            {isAuthenticated ? "Tạo đơn hàng" : "Đăng nhập để tạo đơn"}
           </Button>
         </div>
       </div>

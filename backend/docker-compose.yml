@@ -4,18 +4,19 @@ services:
     container_name: enterprise-order-postgres-dev
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${DB_USER}
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-enterprise_order_management}
     ports:
-      - "${DB_PORT:-5432}:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data_dev:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-enterprise_order_management}"]
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 5s
     networks:
       - enterprise_order_network
 
@@ -31,12 +32,12 @@ services:
       postgres:
         condition: service_healthy
     ports:
-      - "${APP_PORT:-8080}:${APP_PORT:-8080}"
+      - "${PORT:-8080}:8080"
     networks:
       - enterprise_order_network
 
 volumes:
-  postgres_data:
+  postgres_data_dev:
 
 networks:
   enterprise_order_network:

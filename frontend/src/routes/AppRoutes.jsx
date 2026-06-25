@@ -2,15 +2,15 @@ import { Navigate, Route, Routes } from "react-router-dom";
 import AdminLayout from "../layouts/AdminLayout";
 import PublicLayout from "../layouts/PublicLayout";
 import UserLayout from "../layouts/UserLayout";
-import LoginPage from "../pages/auth/LoginPage";
-import RegisterPage from "../pages/auth/RegisterPage";
-import GoogleAuthCallbackPage from "../pages/auth/GoogleAuthCallbackPage";
 import AdminCategoriesPage from "../pages/admin/AdminCategoriesPage";
 import AdminDashboardPage from "../pages/admin/AdminDashboardPage";
 import AdminOrderDetailPage from "../pages/admin/AdminOrderDetailPage";
 import AdminOrdersPage from "../pages/admin/AdminOrdersPage";
 import AdminProductsPage from "../pages/admin/AdminProductsPage";
 import AdminUsersPage from "../pages/admin/AdminUsersPage";
+import GoogleAuthCallbackPage from "../pages/auth/GoogleAuthCallbackPage";
+import LoginPage from "../pages/auth/LoginPage";
+import RegisterPage from "../pages/auth/RegisterPage";
 import ForbiddenPage from "../pages/public/ForbiddenPage";
 import NotFoundPage from "../pages/public/NotFoundPage";
 import ProductDetailPage from "../pages/public/ProductDetailPage";
@@ -18,7 +18,10 @@ import ProductListPage from "../pages/public/ProductListPage";
 import CartPage from "../pages/user/CartPage";
 import MyOrdersPage from "../pages/user/MyOrdersPage";
 import OrderDetailPage from "../pages/user/OrderDetailPage";
+import OrderInformationPage from "../pages/user/OrderInformationPage";
+import OrderPaymentPage from "../pages/user/OrderPaymentPage";
 import ProfilePage from "../pages/user/ProfilePage";
+import ZaloPayReturnPage from "../pages/user/ZaloPayReturnPage";
 import AdminRoute from "./AdminRoute";
 import ProtectedRoute from "./ProtectedRoute";
 
@@ -38,8 +41,12 @@ export default function AppRoutes() {
 
       <Route element={<ProtectedRoute />}>
         <Route element={<UserLayout />}>
+          <Route path="orders" element={<MyOrdersPage />} />
+          <Route path="orders/new" element={<OrderInformationPage />} />
+          <Route path="orders/new/payment" element={<OrderPaymentPage />} />
           <Route path="my-orders" element={<MyOrdersPage />} />
           <Route path="orders/:id" element={<OrderDetailPage />} />
+          <Route path="payment/zalopay/return" element={<ZaloPayReturnPage />} />
           <Route path="profile" element={<ProfilePage />} />
         </Route>
       </Route>

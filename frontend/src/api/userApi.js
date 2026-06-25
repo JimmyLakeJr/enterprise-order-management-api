@@ -2,6 +2,7 @@ import { apiClient, getData } from "./apiClient";
 
 export const userApi = {
   updateMe: async (payload) => getData(await apiClient.put("/users/me", payload)),
+  changePassword: async (payload) => getData(await apiClient.post("/users/me/password", payload)),
   uploadAvatar: async (file) => {
     const formData = new FormData();
     formData.append("avatar", file);

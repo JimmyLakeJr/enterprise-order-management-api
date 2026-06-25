@@ -1,4 +1,4 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
 import { getOrderById } from "../../api/orderApi";
 import Badge from "../../components/common/Badge";
 import Button from "../../components/common/Button";
@@ -12,6 +12,7 @@ import { formatCurrency } from "../../utils/formatCurrency";
 import { getOrderStatus } from "../../utils/orderStatus";
 
 export default function OrderDetailPage() {
+  const location = useLocation();
   const { id } = useParams();
   const { data: order, loading, error, reload } = useAsync(() => getOrderById(id), [id]);
 
@@ -23,7 +24,7 @@ export default function OrderDetailPage() {
         <ErrorMessage message={`Không tải được đơn hàng: ${error}`} />
         <div className="actions">
           <Button onClick={reload}>Thử lại</Button>
-          <Link className="btn btn-secondary" to="/my-orders">Về danh sách</Link>
+          <Link className="btn btn-secondary" to="/orders">Về danh sách</Link>
         </div>
       </div>
     );
@@ -36,7 +37,11 @@ export default function OrderDetailPage() {
 
   return (
     <div className="grid order-detail-layout">
-      <Link to="/my-orders" className="back-link">← Quay lại đơn hàng của tôi</Link>
+      <Link to="/orders" className="back-link">← Quay lại đơn hàng của tôi</Link>
+
+      {location.state?.successMessage && (
+        <div className="alert alert-success order-flow-alert">{location.state.successMessage}</div>
+      )}
 
       <Card className="order-overview-card">
         <div className="page-header order-detail-header">

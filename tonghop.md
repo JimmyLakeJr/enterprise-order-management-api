@@ -182,8 +182,8 @@ repo/
 
 - Migration có seed `admin@example.com`.
 - Migration chỉ seed **bcrypt hash** ở cột `password_hash`, không seed plaintext password.
-- README/docs cũ nói password local là `Admin@123`.
-- Kiểm tra runtime hiện tại với volume đang mount cho thấy `admin@example.com` **không đăng nhập được** bằng `Admin@123`.
+- README/docs cũ có chỗ ghi password local là `Admin@123`.
+- Password seed đúng cho `admin@example.com` trong repo là `123456`.
 - Kiểm tra runtime hiện tại xác nhận `vu@gmail.com / 123456` đăng nhập được và tài khoản này đang có role `admin`.
 - Kết luận thực tế:
   - Email admin seed có tồn tại.
@@ -607,8 +607,8 @@ Google OAuth đã có backend route và frontend callback thật, nhưng chỉ h
 
 > Ghi chú quan trọng:
 > - API trả JSON chuẩn dạng `success/message/data/errors/meta`.
-> - Tài khoản admin seed có email `admin@example.com`, nhưng password plaintext seed sạch hiện tại **không xác nhận được** trên volume DB đang chạy.
-> - README có nói `Admin@123`, nhưng kiểm tra runtime hiện tại bị `Invalid email or password`.
+> - Tài khoản admin seed có email `admin@example.com` và password seed chuẩn trong repo là `123456`.
+> - Nếu volume DB đang chạy là dữ liệu cũ, cần reset volume để quay về đúng credential seed.
 > - Credential admin đã xác minh trên volume local hiện tại là `vu@gmail.com / 123456`.
 
 ```bash
@@ -1036,7 +1036,7 @@ curl -X DELETE "$API/users/$TARGET_USER_ID" \
 
 | Chức năng | Trạng thái | Nguyên nhân | Ảnh hưởng | Ưu tiên | Hướng xử lý |
 |---|---|---|---|---|---|
-| Admin seed password trong tài liệu không khớp runtime hiện tại | Chưa ổn định | Volume DB hiện tại có dữ liệu cũ hoặc password đã khác; `Admin@123` bị từ chối khi kiểm tra runtime, nhưng `vu@gmail.com / 123456` đăng nhập được với role `admin` | Demo/curl admin có thể fail nếu dùng theo README cũ | Cao | Tài liệu hóa credential runtime hiện tại và ghi rõ cần reset volume nếu muốn quay về seed sạch |
+| Admin seed password trong tài liệu không khớp runtime hiện tại | Đã rõ nguyên nhân | Tài liệu cũ từng ghi `Admin@123`, trong khi seed chuẩn cho `admin@example.com` là `123456`; volume DB cũ vẫn có thể chứa dữ liệu khác seed | Demo/curl admin có thể fail nếu dùng volume cũ mà không reset | Cao | Đồng bộ tài liệu về `123456` và ghi rõ cần reset volume nếu muốn quay về seed sạch |
 | Cancel order không hoàn stock | Chưa đúng nghiệp vụ đầy đủ | `UpdateStatus` chỉ đổi trạng thái, không có reverse inventory | Số lượng tồn có thể bị giữ sai khi hủy đơn | Cao | Bổ sung nghiệp vụ restock có kiểm soát và transaction |
 | Order list pagination/filter vừa được bổ sung | Đã cải thiện | `GET /orders` và `GET /users/me/orders` nay dùng `page`, `limit`, `status` và trả `meta` | Giảm tải dữ liệu và rõ ràng hơn cho admin/user | Thấp | Theo dõi thêm UX và backward compatibility frontend |
 | Order items trước đây có N+1 query | Đã cải thiện | Service list nay batch `FindItemsByOrderIDs` thay vì lặp từng order | Giảm số query khi list nhiều order | Thấp | Theo dõi performance với dữ liệu lớn hơn |
@@ -1245,7 +1245,7 @@ npm run lint
 
 | Vấn đề | File/liên quan | Hướng xử lý |
 |---|---|---|
-| `admin@example.com` không login được bằng `Admin@123` trên volume hiện tại | DB volume `postgres_data`, README/docs | Tài liệu hóa rõ credential runtime hiện tại là `vu@gmail.com / 123456`; nếu cần seed sạch thì reset DB volume |
+| `admin@example.com` có thể không login được trên volume cũ nếu dữ liệu đã lệch seed | DB volume `postgres_data`, README/docs | Password seed chuẩn cho `admin@example.com` là `123456`; nếu volume cũ không khớp seed thì reset DB volume |
 | Đăng nhập liên tiếp cùng một tài khoản admin runtime hiện tại | API `/api/v1/auth/login`, `internal/pkg/token/jwt.go`, `refresh_tokens.token_hash` | Đã xác minh đăng nhập lặp lại trả `200`; token refresh hiện có `jti` ngẫu nhiên để tránh va chạm hash trên DB |
 | Dữ liệu trong DB hiện tại không còn là dữ liệu seed tối thiểu | `postgres_data` | Nếu cần demo sạch, chạy `docker compose down -v` |
 
@@ -1329,7 +1329,7 @@ npm run lint
 | Chỉ có 7 bảng nghiệp vụ chính | Đúng | `migrations/001_init.sql` chỉ tạo `roles`, `users`, `refresh_tokens`, `categories`, `products`, `orders`, `order_items`; query runtime PostgreSQL cũng ra 7 bảng | Giữ nguyên |
 | `payments`, `vouchers`, `uploads`, `media`, `email_logs`, `shipping_addresses`, `inventory_logs` | Đúng là chưa implement | Không có trong `migrations/001_init.sql`; kiểm tra `to_regclass(...)` runtime trả `NULL` | Giữ nguyên |
 | Seed admin có tồn tại | Đúng | `migrations/001_init.sql` insert `admin@example.com` | Giữ nguyên |
-| Password admin demo có xác nhận được không | Đúng một phần | Migration chỉ có bcrypt hash; `README.md` ghi `Admin@123`; login runtime hiện tại với `admin@example.com/Admin@123` trả `Invalid email or password`, nhưng `vu@gmail.com / 123456` login được với role `admin` | Sửa diễn đạt rõ seed sạch chưa xác nhận được, đồng thời tài liệu hóa credential runtime hiện tại |
+| Password admin demo có xác nhận được không | Đúng | `internal/pkg/password/password_test.go` xác nhận bcrypt seed trong `migrations/001_init.sql` khớp với `123456`; volume cũ có thể khác dữ liệu seed | Tài liệu hóa thống nhất password seed là `123456` và nhắc reset volume khi cần |
 | Google OAuth backend route và frontend callback | Đúng | `internal/http/server.go` có `/api/v1/auth/google/login` và `/api/v1/auth/google/callback`; frontend có `LoginPage` nút Google và route `/auth/google/callback` | Bổ sung vào endpoint/docs và ghi rõ cơ chế env-gated |
 | Schema OAuth mới | Đúng | `migrations/002_google_oauth.sql` thêm `users.avatar_url` và bảng `oauth_accounts`; DB runtime hiện tại đã apply và query thấy `oauth_accounts` tồn tại | Cập nhật phần database/env/docs theo schema mới |
 | `PUT /api/v1/users/me` | Đúng | `internal/http/server.go`, `internal/handler/user_handler.go`, `internal/service/user_service.go`, `internal/repository/user_repository.go`; frontend gọi qua `frontend/src/api/userApi.js` | Bổ sung bảng đối chiếu endpoint trọng điểm |
@@ -1349,3 +1349,106 @@ npm run lint
 | Frontend routes mục 13 | Đúng | `frontend/src/routes/AppRoutes.jsx` | Giữ nguyên |
 | Không mô tả sai các module Phase 2 như payment/voucher/upload/email/shipping/staff/manager | Đúng | Không có route/service/repository/migration tương ứng trong root runtime | Giữ nguyên |
 | Test/build status hiện tại | Đúng | Đã chạy lại: `go test`, `go vet`, `docker compose config --quiet`, `npm run build`, `npm run lint` đều pass | Cập nhật lại bằng chứng verify mới nhất trong file |
+
+## 25. Cập nhật mới nhất Auth SĐT và Cart Quote
+
+### Đã implement
+
+- `Auth register` hiện hỗ trợ:
+  - email + password
+  - phone + password
+  - email + phone + password
+- `Auth login` hiện hỗ trợ:
+  - `identifier` là email
+  - `identifier` là số điện thoại
+  - backward-compatible với field `email` cũ nếu frontend cũ còn dùng
+- Migration mới:
+  - `migrations/004_auth_phone.sql`
+  - thêm `users.phone`
+  - thêm `users.phone_verified_at`
+  - bỏ `NOT NULL` ở `users.email` để hỗ trợ account chỉ có SĐT
+- Admin user management hiện đã hiển thị và cập nhật được:
+  - `phone`
+- Cart backend mới:
+  - `POST /api/v1/cart/quote`
+  - backend trả:
+    - `items`
+    - `subtotal`
+    - `discount_amount`
+    - `shipping_fee`
+    - `final_amount`
+    - `warnings`
+- Frontend `CartPage` hiện:
+  - vẫn giữ localStorage cart
+  - tự gọi `/api/v1/cart/quote`
+  - hiển thị `warnings` nếu sản phẩm inactive hoặc thiếu stock
+  - ưu tiên tổng tiền backend quote thay vì chỉ tin estimate local
+
+### Chưa implement trong phase này
+
+- Voucher
+- Shipping quote thật
+- Checkout aggregate `/api/v1/checkout`
+- Payment `COD`, `bank_qr`, `momo`, `zalopay`, `vnpay`, `onepay`
+- Payment admin management
+
+### Kết quả verify phase này
+
+- `go test ./cmd/... ./internal/...`: pass
+- `go vet ./cmd/... ./internal/...`: pass
+- `docker compose config --quiet`: pass
+- `cd frontend && npm run build`: pass
+- `cd frontend && npm run lint`: pass
+- Backend test mới đã bổ sung cho:
+  - register bằng phone
+  - register thiếu cả email và phone
+  - login bằng phone
+  - login backward-compatible qua `email`
+- Frontend build vẫn pass sau khi đổi:
+  - `RegisterPage`
+  - `LoginPage`
+  - `AdminUsersPage`
+  - `CartPage`
+
+### File chính đã thay đổi trong phase này
+
+- Backend:
+  - `migrations/004_auth_phone.sql`
+  - `internal/dto/auth.go`
+  - `internal/dto/user.go`
+  - `internal/dto/cart.go`
+  - `internal/model/models.go`
+  - `internal/repository/user_repository.go`
+  - `internal/service/auth_service.go`
+  - `internal/service/user_service.go`
+  - `internal/service/cart_service.go`
+  - `internal/handler/cart_handler.go`
+  - `internal/http/server.go`
+  - `internal/service/auth_service_test.go`
+  - `internal/service/mocks_test.go`
+- Frontend:
+  - `frontend/src/pages/auth/RegisterPage.jsx`
+  - `frontend/src/pages/auth/LoginPage.jsx`
+  - `frontend/src/pages/admin/AdminUsersPage.jsx`
+  - `frontend/src/pages/user/CartPage.jsx`
+  - `frontend/src/api/cartApi.js`
+
+### Endpoint mới của phase này
+
+- `POST /api/v1/cart/quote`
+
+Ví dụ request:
+
+```json
+{
+  "items": [
+    { "product_id": 1, "quantity": 2 }
+  ]
+}
+```
+
+### Ghi chú tương thích ngược
+
+- Frontend cũ dùng login bằng `email/password` vẫn chạy được.
+- `POST /api/v1/orders` cũ vẫn giữ nguyên.
+- Cart vẫn hoạt động với localStorage như trước, chỉ được tăng cường thêm quote từ backend.

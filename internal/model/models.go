@@ -15,10 +15,23 @@ const (
 	OrderStatusCancelled = "cancelled"
 )
 
+const (
+	PaymentProviderZaloPay = "zalopay"
+)
+
+const (
+	PaymentStatusPending   = "pending"
+	PaymentStatusPaid      = "paid"
+	PaymentStatusFailed    = "failed"
+	PaymentStatusCancelled = "cancelled"
+	PaymentStatusExpired   = "expired"
+)
+
 type User struct {
 	ID              int64
 	Name            string
 	Email           string
+	Phone           string
 	PasswordHash    string
 	AvatarURL       string
 	ProfileVideoURL string
@@ -91,4 +104,25 @@ type OrderItem struct {
 	UnitPrice int64
 	Subtotal  int64
 	Product   *Product
+}
+
+type Payment struct {
+	ID                    int64
+	TransactionID         string
+	OrderID               int64
+	UserID                int64
+	Provider              string
+	ProviderTransactionID string
+	AppTransactionID      string
+	Amount                int64
+	Currency              string
+	Status                string
+	PaymentURL            string
+	RawRequest            string
+	RawResponse           string
+	RawCallback           string
+	PaidAt                *time.Time
+	ExpiredAt             *time.Time
+	CreatedAt             time.Time
+	UpdatedAt             time.Time
 }

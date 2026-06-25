@@ -21,7 +21,7 @@ export default function AppHeader() {
     { to: "/", label: "Trang chủ", end: true },
     { to: "/products", label: "Sản phẩm" },
     { to: "/cart", label: `Giỏ hàng (${totalItems})` },
-    { to: "/my-orders", label: "Đơn hàng của tôi" },
+    { to: "/orders", label: "Đơn hàng của tôi" },
     { to: "/profile", label: "Hồ sơ", action: true },
   ];
 
@@ -69,7 +69,7 @@ export default function AppHeader() {
           ))}
           {isAuthenticated && (
             <>
-              <span className="nav-user">{user?.name}</span>
+              <span className="nav-user">{user?.full_name || user?.name}</span>
               <button type="button" className="nav-action nav-action-danger" onClick={handleLogout}>
                 Đăng xuất
               </button>

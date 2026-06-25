@@ -3,6 +3,7 @@ import { authApi } from "../api/authApi";
 import { userApi } from "../api/userApi";
 import { clearAuthStorage, getAccessToken, getRefreshToken, saveAuthTokens } from "../api/apiClient";
 import { AUTH_EVENTS, ROLES, STORAGE_KEYS } from "../constants/domain";
+import { clearOrderDraft } from "../utils/orderDraft";
 
 const AuthContext = createContext(null);
 
@@ -22,7 +23,8 @@ export function AuthProvider({ children }) {
   const [refreshToken, setRefreshToken] = useState(getRefreshToken);
   const [loading, setLoading] = useState(true);
 
-  const clearAuthData = useCallback(() => {
+  const clearAuthData = useCallback((userID = null) => {
+    if (userID) clearOrderDraft(userID);
     clearAuthStorage();
     setUser(null);
     setAccessToken(null);
@@ -55,7 +57,7 @@ export function AuthProvider({ children }) {
       if (!getAccessToken()) {
         const storedRefreshToken = getRefreshToken();
         if (!storedRefreshToken) {
-          clearAuthData();
+          clearAuthData(readStoredUser()?.id || null);
           return null;
         }
 
@@ -70,7 +72,7 @@ export function AuthProvider({ children }) {
       setRefreshToken(getRefreshToken());
       return me;
     } catch {
-      clearAuthData();
+      clearAuthData(readStoredUser()?.id || null);
       return null;
     } finally {
       setLoading(false);
@@ -81,6 +83,7 @@ export function AuthProvider({ children }) {
     const loadTimer = window.setTimeout(() => void loadMe(), 0);
 
     function handleForcedLogout() {
+      clearOrderDraft(user?.id || null);
       setUser(null);
       setAccessToken(null);
       setRefreshToken(null);
@@ -97,7 +100,7 @@ export function AuthProvider({ children }) {
       window.removeEventListener(AUTH_EVENTS.LOGOUT, handleForcedLogout);
       window.removeEventListener(AUTH_EVENTS.REFRESHED, handleTokenRefresh);
     };
-  }, [applyAuthData, loadMe]);
+  }, [applyAuthData, loadMe, user?.id]);
 
   const login = useCallback(async (payload) => {
     setLoading(true);
@@ -128,15 +131,19 @@ export function AuthProvider({ children }) {
     } catch {
       // Local logout must still succeed when the access token is already invalid.
     } finally {
-      clearAuthData();
+      clearAuthData(user?.id || null);
     }
-  }, [clearAuthData]);
+  }, [clearAuthData, user?.id]);
 
   const updateProfile = useCallback(async (payload) => {
     const updatedUser = await userApi.updateMe(payload);
     localStorage.setItem(STORAGE_KEYS.USER, JSON.stringify(updatedUser));
     setUser(updatedUser);
     return updatedUser;
+  }, []);
+
+  const changePassword = useCallback(async (payload) => {
+    return userApi.changePassword(payload);
   }, []);
 
   const uploadAvatar = useCallback(async (file) => {
@@ -177,11 +184,12 @@ export function AuthProvider({ children }) {
       logout,
       loadMe,
       updateProfile,
+      changePassword,
       uploadAvatar,
       uploadProfileVideo,
       completeOAuthLogin,
     }),
-    [accessToken, completeOAuthLogin, loadMe, loading, login, logout, refreshToken, register, updateProfile, uploadAvatar, uploadProfileVideo, user]
+    [accessToken, changePassword, completeOAuthLogin, loadMe, loading, login, logout, refreshToken, register, updateProfile, uploadAvatar, uploadProfileVideo, user]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -31,6 +31,7 @@ func NewServer(db *pgxpool.Pool, cfg config.Config) *echo.Echo {
 	categoryRepo := repository.NewCategoryRepository(db)
 	productRepo := repository.NewProductRepository(db)
 	orderRepo := repository.NewOrderRepository(db)
+	paymentRepo := repository.NewPaymentRepository(db)
 	fileStorage := storage.NewLocalFileStorage(cfg.UploadDir, cfg.BackendPublicURL)
 	googleProvider := oauth.NewGoogleProvider(cfg.GoogleClientID, cfg.GoogleClientSecret, cfg.GoogleRedirectURL)
 
@@ -39,12 +40,16 @@ func NewServer(db *pgxpool.Pool, cfg config.Config) *echo.Echo {
 	categoryService := service.NewCategoryService(categoryRepo)
 	productService := service.NewProductService(productRepo, categoryRepo, fileStorage)
 	orderService := service.NewOrderService(db, orderRepo)
+	cartService := service.NewCartService(productRepo)
+	paymentService := service.NewPaymentService(db, orderRepo, paymentRepo, cfg)
 
 	authHandler := handler.NewAuthHandler(authService, cfg)
 	userHandler := handler.NewUserHandler(userService)
 	categoryHandler := handler.NewCategoryHandler(categoryService)
 	productHandler := handler.NewProductHandler(productService)
 	orderHandler := handler.NewOrderHandler(orderService)
+	cartHandler := handler.NewCartHandler(cartService)
+	paymentHandler := handler.NewPaymentHandler(paymentService)
 
 	e.GET("/health", func(c echo.Context) error {
 		return response.OK(c, map[string]string{"status": "ok"})
@@ -63,11 +68,14 @@ func NewServer(db *pgxpool.Pool, cfg config.Config) *echo.Echo {
 	public.GET("/categories/:id", categoryHandler.FindByID)
 	public.GET("/products", productHandler.List)
 	public.GET("/products/:id", productHandler.FindByID)
+	public.POST("/cart/quote", cartHandler.Quote)
+	public.POST("/payments/zalopay/callback", paymentHandler.ZaloPayCallback)
 
 	userProtected := api.Group("", appmiddleware.JWTAuth(cfg.JWTAccessSecret))
 	userProtected.POST("/auth/logout", authHandler.Logout)
 	userProtected.GET("/auth/me", authHandler.Me)
 	userProtected.PUT("/users/me", userHandler.UpdateMe)
+	userProtected.POST("/users/me/password", userHandler.ChangePassword)
 	userProtected.POST("/users/me/avatar", userHandler.UploadAvatar)
 	userProtected.POST("/users/me/profile-video", userHandler.UploadProfileVideo)
 	userProtected.GET("/users/me/orders", orderHandler.MyOrders)
@@ -77,6 +85,10 @@ func NewServer(db *pgxpool.Pool, cfg config.Config) *echo.Echo {
 	orders.GET("", orderHandler.List)
 	orders.GET("/:id", orderHandler.FindByID)
 	orders.PUT("/:id/status", orderHandler.UpdateStatus, appmiddleware.RequireRoles(model.RoleAdmin))
+
+	payments := userProtected.Group("/payments")
+	payments.POST("/zalopay/create", paymentHandler.CreateZaloPay)
+	payments.GET("/zalopay/status/:transactionId", paymentHandler.ZaloPayStatus)
 
 	users := api.Group("/users", appmiddleware.JWTAuth(cfg.JWTAccessSecret), appmiddleware.RequireRoles(model.RoleAdmin))
 	users.GET("", userHandler.List)

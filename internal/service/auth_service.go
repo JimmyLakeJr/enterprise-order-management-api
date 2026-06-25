@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"enterprise-order-management-api/internal/config"
@@ -50,12 +51,30 @@ func NewAuthService(
 }
 
 func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*dto.AuthResponse, error) {
-	existing, err := s.users.FindByEmail(ctx, req.Email)
-	if err != nil {
-		return nil, err
+	name := strings.TrimSpace(req.Name)
+	email := normalizeEmail(req.Email)
+	phone := normalizePhone(req.Phone)
+
+	if email == "" && phone == "" {
+		return nil, apperror.BadRequest("Email or phone is required")
 	}
-	if existing != nil {
-		return nil, apperror.Conflict("Email already exists")
+	if email != "" {
+		existing, err := s.users.FindByEmailAny(ctx, email)
+		if err != nil {
+			return nil, err
+		}
+		if existing != nil {
+			return nil, apperror.Conflict("Email already exists")
+		}
+	}
+	if phone != "" {
+		existing, err := s.users.FindByPhoneAny(ctx, phone)
+		if err != nil {
+			return nil, err
+		}
+		if existing != nil {
+			return nil, apperror.Conflict("Phone already exists")
+		}
 	}
 
 	hashedPassword, err := password.Hash(req.Password)
@@ -64,8 +83,9 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 	}
 
 	user := &model.User{
-		Name:         req.Name,
-		Email:        req.Email,
+		Name:         name,
+		Email:        email,
+		Phone:        phone,
 		PasswordHash: hashedPassword,
 		Role:         model.RoleUser,
 	}
@@ -78,12 +98,21 @@ func (s *authService) Register(ctx context.Context, req dto.RegisterRequest) (*d
 }
 
 func (s *authService) Login(ctx context.Context, req dto.LoginRequest) (*dto.AuthResponse, error) {
-	user, err := s.users.FindByEmail(ctx, req.Email)
+	identifier := strings.TrimSpace(req.Identifier)
+	if identifier == "" {
+		identifier = strings.TrimSpace(req.Email)
+	}
+	identifier = normalizeLoginIdentifier(identifier)
+	if identifier == "" {
+		return nil, apperror.BadRequest("Email or phone is required")
+	}
+
+	user, err := s.users.FindByIdentifier(ctx, identifier)
 	if err != nil {
 		return nil, err
 	}
 	if user == nil || !password.Check(req.Password, user.PasswordHash) {
-		return nil, apperror.Unauthorized("Invalid email or password")
+		return nil, apperror.Unauthorized("Invalid email/phone or password")
 	}
 
 	return s.issueTokens(ctx, user)
@@ -177,6 +206,7 @@ func ToUserResponse(user *model.User) dto.UserResponse {
 		ID:              user.ID,
 		Name:            user.Name,
 		Email:           user.Email,
+		Phone:           user.Phone,
 		AvatarURL:       user.AvatarURL,
 		ProfileVideoURL: user.ProfileVideoURL,
 		Role:            user.Role,
@@ -184,4 +214,35 @@ func ToUserResponse(user *model.User) dto.UserResponse {
 		CreatedAt:       user.CreatedAt,
 		UpdatedAt:       user.UpdatedAt,
 	}
+}
+
+func normalizeEmail(email string) string {
+	return strings.ToLower(strings.TrimSpace(email))
+}
+
+func normalizePhone(phone string) string {
+	phone = strings.TrimSpace(phone)
+	if phone == "" {
+		return ""
+	}
+
+	var b strings.Builder
+	for i, r := range phone {
+		if r >= '0' && r <= '9' {
+			b.WriteRune(r)
+			continue
+		}
+		if r == '+' && i == 0 {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
+func normalizeLoginIdentifier(identifier string) string {
+	trimmed := strings.TrimSpace(identifier)
+	if strings.Contains(trimmed, "@") {
+		return normalizeEmail(trimmed)
+	}
+	return normalizePhone(trimmed)
 }

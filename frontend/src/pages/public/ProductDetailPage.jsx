@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { getProductById } from "../../api/productApi";
 import Badge from "../../components/common/Badge";
 import Button from "../../components/common/Button";
@@ -7,6 +7,7 @@ import Card from "../../components/common/Card";
 import ErrorMessage from "../../components/common/ErrorMessage";
 import Input from "../../components/common/Input";
 import Loading from "../../components/common/Loading";
+import { useAuth } from "../../contexts/AuthContext";
 import { useCart } from "../../contexts/CartContext";
 import { useAsync } from "../../hooks/useAsync";
 import { formatCurrency } from "../../utils/formatCurrency";
@@ -14,6 +15,8 @@ import { resolveAssetUrl } from "../../utils/resolveAssetUrl";
 
 export default function ProductDetailPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
+  const { isAuthenticated } = useAuth();
   const { addToCart } = useCart();
   const { data: product, loading, error, reload } = useAsync(() => getProductById(id), [id]);
   const [quantityState, setQuantityState] = useState({ productId: id, value: 1 });
@@ -59,8 +62,13 @@ export default function ProductDetailPage() {
 
   function handleAddToCart() {
     if (quantityError || isOutOfStock) return;
+    if (!isAuthenticated) {
+      navigate("/login", { state: { from: `/products/${id}` } });
+      return;
+    }
+
     addToCart(product, numericQuantity);
-    setMessageState({ productId: id, value: `Đã thêm ${numericQuantity} × “${product.name}” vào giỏ hàng.` });
+    setMessageState({ productId: id, value: `Đã thêm ${numericQuantity} x "${product.name}" vào giỏ hàng.` });
   }
 
   return (
@@ -108,7 +116,7 @@ export default function ProductDetailPage() {
                 fieldClassName="quantity-box"
               />
               <Button className="add-to-cart-button" onClick={handleAddToCart} disabled={isOutOfStock || Boolean(quantityError)}>
-                {isOutOfStock ? "Tạm hết hàng" : "Thêm vào giỏ"}
+                {isOutOfStock ? "Tạm hết hàng" : isAuthenticated ? "Thêm vào giỏ" : "Đăng nhập để mua"}
               </Button>
             </div>
 

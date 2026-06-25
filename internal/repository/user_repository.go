@@ -17,13 +17,18 @@ type UserRepository interface {
 	Create(ctx context.Context, user *model.User) error
 	CreateWithQuerier(ctx context.Context, q Queryer, user *model.User) error
 	FindByEmail(ctx context.Context, email string) (*model.User, error)
+	FindByPhone(ctx context.Context, phone string) (*model.User, error)
+	FindByIdentifier(ctx context.Context, identifier string) (*model.User, error)
 	FindByEmailAny(ctx context.Context, email string) (*model.User, error)
+	FindByPhoneAny(ctx context.Context, phone string) (*model.User, error)
 	FindByID(ctx context.Context, id int64) (*model.User, error)
 	FindByIDAny(ctx context.Context, id int64) (*model.User, error)
 	List(ctx context.Context, query dto.UserListQuery) ([]model.User, int64, error)
 	ExistsByEmailOtherUser(ctx context.Context, email string, userID int64) (bool, error)
+	ExistsByPhoneOtherUser(ctx context.Context, phone string, userID int64) (bool, error)
 	Update(ctx context.Context, user *model.User) error
-	UpdateProfileName(ctx context.Context, id int64, name string) error
+	UpdateProfile(ctx context.Context, id int64, name string, phone string) error
+	UpdatePasswordHash(ctx context.Context, id int64, passwordHash string) error
 	UpdateAvatarURL(ctx context.Context, id int64, avatarURL string) error
 	UpdateProfileVideoURL(ctx context.Context, id int64, profileVideoURL string) error
 	SoftDelete(ctx context.Context, id int64) error
@@ -46,18 +51,18 @@ func (r *userRepository) Create(ctx context.Context, user *model.User) error {
 
 func (r *userRepository) CreateWithQuerier(ctx context.Context, q Queryer, user *model.User) error {
 	query := `
-		INSERT INTO users (full_name, email, password_hash, avatar_url, profile_video_url, role_id)
-		VALUES ($1, $2, $3, $4, $5, (SELECT id FROM roles WHERE name = $6))
+		INSERT INTO users (full_name, email, phone, password_hash, avatar_url, profile_video_url, role_id)
+		VALUES ($1, NULLIF($2, ''), NULLIF($3, ''), $4, $5, $6, (SELECT id FROM roles WHERE name = $7))
 		RETURNING id, role_id, is_active, created_at, updated_at
 	`
 
-	return q.QueryRow(ctx, query, user.Name, user.Email, user.PasswordHash, user.AvatarURL, user.ProfileVideoURL, user.Role).
+	return q.QueryRow(ctx, query, user.Name, user.Email, user.Phone, user.PasswordHash, user.AvatarURL, user.ProfileVideoURL, user.Role).
 		Scan(&user.ID, &user.RoleID, &user.IsActive, &user.CreatedAt, &user.UpdatedAt)
 }
 
 func (r *userRepository) FindByEmail(ctx context.Context, email string) (*model.User, error) {
 	query := `
-		SELECT u.id, u.full_name, u.email, u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
+		SELECT u.id, u.full_name, COALESCE(u.email, ''), COALESCE(u.phone, ''), u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
 		WHERE u.email = $1 AND u.is_active = TRUE
@@ -66,9 +71,31 @@ func (r *userRepository) FindByEmail(ctx context.Context, email string) (*model.
 	return r.findOne(ctx, query, email)
 }
 
+func (r *userRepository) FindByPhone(ctx context.Context, phone string) (*model.User, error) {
+	query := `
+		SELECT u.id, u.full_name, COALESCE(u.email, ''), COALESCE(u.phone, ''), u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
+		FROM users u
+		JOIN roles r ON r.id = u.role_id
+		WHERE u.phone = $1 AND u.is_active = TRUE
+	`
+
+	return r.findOne(ctx, query, phone)
+}
+
+func (r *userRepository) FindByIdentifier(ctx context.Context, identifier string) (*model.User, error) {
+	query := `
+		SELECT u.id, u.full_name, COALESCE(u.email, ''), COALESCE(u.phone, ''), u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
+		FROM users u
+		JOIN roles r ON r.id = u.role_id
+		WHERE (u.email = $1 OR u.phone = $1) AND u.is_active = TRUE
+	`
+
+	return r.findOne(ctx, query, identifier)
+}
+
 func (r *userRepository) FindByEmailAny(ctx context.Context, email string) (*model.User, error) {
 	query := `
-		SELECT u.id, u.full_name, u.email, u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
+		SELECT u.id, u.full_name, COALESCE(u.email, ''), COALESCE(u.phone, ''), u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
 		WHERE u.email = $1
@@ -77,9 +104,20 @@ func (r *userRepository) FindByEmailAny(ctx context.Context, email string) (*mod
 	return r.findOne(ctx, query, email)
 }
 
+func (r *userRepository) FindByPhoneAny(ctx context.Context, phone string) (*model.User, error) {
+	query := `
+		SELECT u.id, u.full_name, COALESCE(u.email, ''), COALESCE(u.phone, ''), u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
+		FROM users u
+		JOIN roles r ON r.id = u.role_id
+		WHERE u.phone = $1
+	`
+
+	return r.findOne(ctx, query, phone)
+}
+
 func (r *userRepository) FindByID(ctx context.Context, id int64) (*model.User, error) {
 	query := `
-		SELECT u.id, u.full_name, u.email, u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
+		SELECT u.id, u.full_name, COALESCE(u.email, ''), COALESCE(u.phone, ''), u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
 		WHERE u.id = $1 AND u.is_active = TRUE
@@ -90,7 +128,7 @@ func (r *userRepository) FindByID(ctx context.Context, id int64) (*model.User, e
 
 func (r *userRepository) FindByIDAny(ctx context.Context, id int64) (*model.User, error) {
 	query := `
-		SELECT u.id, u.full_name, u.email, u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
+		SELECT u.id, u.full_name, COALESCE(u.email, ''), COALESCE(u.phone, ''), u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
 		WHERE u.id = $1
@@ -111,7 +149,7 @@ func (r *userRepository) List(ctx context.Context, query dto.UserListQuery) ([]m
 
 	args = append(args, query.Limit, offset)
 	listSQL := fmt.Sprintf(`
-		SELECT u.id, u.full_name, u.email, u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
+		SELECT u.id, u.full_name, COALESCE(u.email, ''), COALESCE(u.phone, ''), u.password_hash, u.avatar_url, u.profile_video_url, u.role_id, r.name, u.is_active, u.created_at, u.updated_at
 		FROM users u
 		JOIN roles r ON r.id = u.role_id
 		%s
@@ -144,17 +182,26 @@ func (r *userRepository) ExistsByEmailOtherUser(ctx context.Context, email strin
 	return exists, err
 }
 
+func (r *userRepository) ExistsByPhoneOtherUser(ctx context.Context, phone string, userID int64) (bool, error) {
+	query := `SELECT EXISTS(SELECT 1 FROM users WHERE phone = $1 AND id <> $2)`
+
+	var exists bool
+	err := r.db.QueryRow(ctx, query, phone, userID).Scan(&exists)
+	return exists, err
+}
+
 func (r *userRepository) Update(ctx context.Context, user *model.User) error {
 	query := `
 		UPDATE users
 		SET full_name = $1,
-		    email = $2,
-		    role_id = (SELECT id FROM roles WHERE name = $3),
+		    email = NULLIF($2, ''),
+		    phone = NULLIF($3, ''),
+		    role_id = (SELECT id FROM roles WHERE name = $4),
 		    updated_at = NOW()
-		WHERE id = $4 AND is_active = TRUE
+		WHERE id = $5 AND is_active = TRUE
 	`
 
-	commandTag, err := r.db.Exec(ctx, query, user.Name, user.Email, user.Role, user.ID)
+	commandTag, err := r.db.Exec(ctx, query, user.Name, user.Email, user.Phone, user.Role, user.ID)
 	if err != nil {
 		return err
 	}
@@ -164,9 +211,21 @@ func (r *userRepository) Update(ctx context.Context, user *model.User) error {
 	return nil
 }
 
-func (r *userRepository) UpdateProfileName(ctx context.Context, id int64, name string) error {
-	query := `UPDATE users SET full_name = $1, updated_at = NOW() WHERE id = $2 AND is_active = TRUE`
-	commandTag, err := r.db.Exec(ctx, query, name, id)
+func (r *userRepository) UpdateProfile(ctx context.Context, id int64, name string, phone string) error {
+	query := `UPDATE users SET full_name = $1, phone = NULLIF($2, ''), updated_at = NOW() WHERE id = $3 AND is_active = TRUE`
+	commandTag, err := r.db.Exec(ctx, query, name, phone, id)
+	if err != nil {
+		return err
+	}
+	if commandTag.RowsAffected() == 0 {
+		return pgx.ErrNoRows
+	}
+	return nil
+}
+
+func (r *userRepository) UpdatePasswordHash(ctx context.Context, id int64, passwordHash string) error {
+	query := `UPDATE users SET password_hash = $1, updated_at = NOW() WHERE id = $2 AND is_active = TRUE`
+	commandTag, err := r.db.Exec(ctx, query, passwordHash, id)
 	if err != nil {
 		return err
 	}
@@ -252,7 +311,7 @@ func buildUserWhere(query dto.UserListQuery) (string, []any) {
 
 	if query.Search != "" {
 		args = append(args, "%"+query.Search+"%")
-		conditions = append(conditions, fmt.Sprintf("(u.email ILIKE $%d OR u.full_name ILIKE $%d)", len(args), len(args)))
+		conditions = append(conditions, fmt.Sprintf("(COALESCE(u.email, '') ILIKE $%d OR COALESCE(u.phone, '') ILIKE $%d OR u.full_name ILIKE $%d)", len(args), len(args), len(args)))
 	}
 
 	return "WHERE " + strings.Join(conditions, " AND "), args
@@ -264,6 +323,7 @@ func (r *userRepository) findOne(ctx context.Context, query string, args ...any)
 		&user.ID,
 		&user.Name,
 		&user.Email,
+		&user.Phone,
 		&user.PasswordHash,
 		&user.AvatarURL,
 		&user.ProfileVideoURL,
@@ -284,6 +344,7 @@ func scanUser(rows pgx.Rows, user *model.User) error {
 		&user.ID,
 		&user.Name,
 		&user.Email,
+		&user.Phone,
 		&user.PasswordHash,
 		&user.AvatarURL,
 		&user.ProfileVideoURL,

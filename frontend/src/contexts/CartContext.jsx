@@ -38,22 +38,33 @@ function sanitizeStoredCart(value) {
   });
 }
 
-function readCartFromStorage() {
+function getCartStorageKey(userID) {
+  if (!userID) return null;
+  return `${STORAGE_KEYS.CART}:${userID}`;
+}
+
+function readCartFromStorage(userID) {
+  const storageKey = getCartStorageKey(userID);
+  if (!storageKey) return [];
+
   try {
-    const raw = localStorage.getItem(STORAGE_KEYS.CART);
+    const raw = localStorage.getItem(storageKey);
     return raw ? sanitizeStoredCart(JSON.parse(raw)) : [];
   } catch {
-    localStorage.removeItem(STORAGE_KEYS.CART);
+    localStorage.removeItem(storageKey);
     return [];
   }
 }
 
-export function CartProvider({ children }) {
-  const [items, setItems] = useState(readCartFromStorage);
+export function CartProvider({ children, userID = null }) {
+  const [items, setItems] = useState(() => readCartFromStorage(userID));
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.CART, JSON.stringify(items));
-  }, [items]);
+    const storageKey = getCartStorageKey(userID);
+    if (!storageKey) return;
+
+    localStorage.setItem(storageKey, JSON.stringify(items));
+  }, [items, userID]);
 
   function addToCart(product, quantity = 1) {
     if (!product?.id || !normalizeQuantity(quantity)) return false;

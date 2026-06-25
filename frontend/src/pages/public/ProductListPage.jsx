@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { getMessage } from "../../api/apiClient";
 import { getCategories } from "../../api/categoryApi";
 import { getProducts } from "../../api/productApi";
@@ -8,8 +9,9 @@ import ErrorMessage from "../../components/common/ErrorMessage";
 import Input from "../../components/common/Input";
 import Loading from "../../components/common/Loading";
 import Select from "../../components/common/Select";
-import ProductCard from "../../components/products/ProductCard";
 import Toast from "../../components/common/Toast";
+import ProductCard from "../../components/products/ProductCard";
+import { useAuth } from "../../contexts/AuthContext";
 import { useCart } from "../../contexts/CartContext";
 
 const DEFAULT_FILTERS = {
@@ -23,6 +25,8 @@ const DEFAULT_FILTERS = {
 
 export default function ProductListPage() {
   const { addToCart } = useCart();
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
   const requestIdRef = useRef(0);
   const [products, setProducts] = useState([]);
   const [categories, setCategories] = useState([]);
@@ -74,7 +78,7 @@ export default function ProductListPage() {
       }
     }
 
-    loadProducts();
+    void loadProducts();
   }, [appliedFilters, retryToken]);
 
   function handleChange(event) {
@@ -104,8 +108,13 @@ export default function ProductListPage() {
   }
 
   function handleAddToCart(product) {
+    if (!isAuthenticated) {
+      navigate("/login", { state: { from: "/products" } });
+      return;
+    }
+
     addToCart(product, 1);
-    setSuccessMessage(`Đã thêm “${product.name}” vào giỏ hàng.`);
+    setSuccessMessage(`Đã thêm "${product.name}" vào giỏ hàng.`);
   }
 
   function goToPage(page) {
@@ -184,7 +193,12 @@ export default function ProductListPage() {
       ) : (
         <div className="grid product-grid">
           {products.map((product) => (
-            <ProductCard key={product.id} product={product} onAdd={handleAddToCart} />
+            <ProductCard
+              key={product.id}
+              product={product}
+              onAdd={handleAddToCart}
+              addLabel={isAuthenticated ? "Thêm vào giỏ" : "Đăng nhập để mua"}
+            />
           ))}
         </div>
       )}

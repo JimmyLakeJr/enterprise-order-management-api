@@ -13,6 +13,7 @@ export default function RegisterPage() {
   const [form, setForm] = useState({
     full_name: "",
     email: "",
+    phone: "",
     password: "",
     confirm_password: "",
   });
@@ -20,7 +21,12 @@ export default function RegisterPage() {
 
   function validate() {
     if (form.full_name.trim().length < 2) return "Họ tên phải có ít nhất 2 ký tự.";
-    if (!form.email.includes("@")) return "Email không hợp lệ.";
+    if (!form.email.trim() && !form.phone.trim()) return "Cần nhập email hoặc số điện thoại.";
+    if (form.email.trim() && !form.email.includes("@")) return "Email không hợp lệ.";
+
+    const normalizedPhone = form.phone.replace(/[^\d+]/g, "");
+    if (form.phone.trim() && normalizedPhone.length < 9) return "Số điện thoại không hợp lệ.";
+
     if (form.password.length < 6) return "Mật khẩu phải có ít nhất 6 ký tự.";
     if (form.password !== form.confirm_password) return "Mật khẩu xác nhận không khớp.";
     return "";
@@ -40,6 +46,7 @@ export default function RegisterPage() {
       await register({
         name: form.full_name,
         email: form.email,
+        phone: form.phone,
         password: form.password,
       });
       navigate("/", { replace: true });
@@ -52,7 +59,7 @@ export default function RegisterPage() {
     <div className="auth-shell">
       <GlassCard strong className="auth-card">
         <h1>Đăng ký</h1>
-        <p className="muted">Tạo tài khoản để bắt đầu đặt hàng, theo dõi trạng thái và quản lý thông tin cá nhân.</p>
+        <p className="muted">Tạo tài khoản bằng email hoặc số điện thoại để bắt đầu đặt hàng và theo dõi đơn hàng.</p>
         <ErrorMessage message={error} />
         <form className="form-stack" onSubmit={handleSubmit}>
           <Input
@@ -67,6 +74,13 @@ export default function RegisterPage() {
             autoComplete="email"
             value={form.email}
             onChange={(event) => setForm({ ...form, email: event.target.value })}
+          />
+          <Input
+            label="Số điện thoại"
+            type="tel"
+            autoComplete="tel"
+            value={form.phone}
+            onChange={(event) => setForm({ ...form, phone: event.target.value })}
           />
           <Input
             label="Mật khẩu"

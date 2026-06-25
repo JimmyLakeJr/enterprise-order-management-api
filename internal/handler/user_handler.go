@@ -84,6 +84,21 @@ func (h *UserHandler) UpdateMe(c echo.Context) error {
 	return response.OK(c, res)
 }
 
+func (h *UserHandler) ChangePassword(c echo.Context) error {
+	var req dto.ChangePasswordRequest
+	if err := c.Bind(&req); err != nil {
+		return err
+	}
+	if err := c.Validate(&req); err != nil {
+		return err
+	}
+
+	if err := h.users.ChangePassword(c.Request().Context(), appmiddleware.CurrentUserID(c), req); err != nil {
+		return err
+	}
+	return response.Message(c, http.StatusOK, "Password changed successfully")
+}
+
 func (h *UserHandler) UploadAvatar(c echo.Context) error {
 	file, err := c.FormFile("avatar")
 	if err != nil {

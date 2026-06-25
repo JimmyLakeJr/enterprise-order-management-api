@@ -5,7 +5,7 @@ import Card from "../common/Card";
 import { formatCurrency } from "../../utils/formatCurrency";
 import { resolveAssetUrl } from "../../utils/resolveAssetUrl";
 
-export default function ProductCard({ product, onAdd }) {
+export default function ProductCard({ product, onAdd, addLabel = "Thêm vào giỏ" }) {
   const [failedImageUrl, setFailedImageUrl] = useState("");
   const categoryName = product.category?.name || product.category_name || "Chưa phân loại";
   const stock = Number(product.stock);
@@ -42,7 +42,7 @@ export default function ProductCard({ product, onAdd }) {
           Xem chi tiết
         </Link>
         <Button onClick={() => onAdd(product, 1)} disabled={isOutOfStock} aria-label={`Thêm ${product.name} vào giỏ`}>
-          Thêm vào giỏ
+          {addLabel}
         </Button>
       </div>
     </Card>

@@ -17,13 +17,18 @@ type mockUserRepository struct {
 	createFunc                 func(ctx context.Context, user *model.User) error
 	createWithQuerierFunc      func(ctx context.Context, q repository.Queryer, user *model.User) error
 	findByEmailFunc            func(ctx context.Context, email string) (*model.User, error)
+	findByPhoneFunc            func(ctx context.Context, phone string) (*model.User, error)
+	findByIdentifierFunc       func(ctx context.Context, identifier string) (*model.User, error)
 	findByEmailAnyFunc         func(ctx context.Context, email string) (*model.User, error)
+	findByPhoneAnyFunc         func(ctx context.Context, phone string) (*model.User, error)
 	findByIDFunc               func(ctx context.Context, id int64) (*model.User, error)
 	findByIDAnyFunc            func(ctx context.Context, id int64) (*model.User, error)
 	listFunc                   func(ctx context.Context, query dto.UserListQuery) ([]model.User, int64, error)
 	existsByEmailOtherUserFunc func(ctx context.Context, email string, userID int64) (bool, error)
+	existsByPhoneOtherUserFunc func(ctx context.Context, phone string, userID int64) (bool, error)
 	updateFunc                 func(ctx context.Context, user *model.User) error
-	updateProfileNameFunc      func(ctx context.Context, id int64, name string) error
+	updateProfileFunc          func(ctx context.Context, id int64, name string, phone string) error
+	updatePasswordHashFunc     func(ctx context.Context, id int64, passwordHash string) error
 	updateAvatarURLFunc        func(ctx context.Context, id int64, avatarURL string) error
 	updateProfileVideoURLFunc  func(ctx context.Context, id int64, profileVideoURL string) error
 	softDeleteFunc             func(ctx context.Context, id int64) error
@@ -47,6 +52,23 @@ func (m *mockUserRepository) FindByEmail(ctx context.Context, email string) (*mo
 	return m.findByEmailFunc(ctx, email)
 }
 
+func (m *mockUserRepository) FindByPhone(ctx context.Context, phone string) (*model.User, error) {
+	if m.findByPhoneFunc != nil {
+		return m.findByPhoneFunc(ctx, phone)
+	}
+	return nil, nil
+}
+
+func (m *mockUserRepository) FindByIdentifier(ctx context.Context, identifier string) (*model.User, error) {
+	if m.findByIdentifierFunc != nil {
+		return m.findByIdentifierFunc(ctx, identifier)
+	}
+	if m.findByEmailFunc != nil {
+		return m.findByEmailFunc(ctx, identifier)
+	}
+	return nil, nil
+}
+
 func (m *mockUserRepository) FindByEmailAny(ctx context.Context, email string) (*model.User, error) {
 	if m.findByEmailAnyFunc != nil {
 		return m.findByEmailAnyFunc(ctx, email)
@@ -54,7 +76,17 @@ func (m *mockUserRepository) FindByEmailAny(ctx context.Context, email string) (
 	return m.findByEmailFunc(ctx, email)
 }
 
+func (m *mockUserRepository) FindByPhoneAny(ctx context.Context, phone string) (*model.User, error) {
+	if m.findByPhoneAnyFunc != nil {
+		return m.findByPhoneAnyFunc(ctx, phone)
+	}
+	return m.FindByPhone(ctx, phone)
+}
+
 func (m *mockUserRepository) FindByID(ctx context.Context, id int64) (*model.User, error) {
+	if m.findByIDFunc == nil {
+		return nil, nil
+	}
 	return m.findByIDFunc(ctx, id)
 }
 
@@ -73,15 +105,29 @@ func (m *mockUserRepository) ExistsByEmailOtherUser(ctx context.Context, email s
 	return m.existsByEmailOtherUserFunc(ctx, email, userID)
 }
 
+func (m *mockUserRepository) ExistsByPhoneOtherUser(ctx context.Context, phone string, userID int64) (bool, error) {
+	if m.existsByPhoneOtherUserFunc != nil {
+		return m.existsByPhoneOtherUserFunc(ctx, phone, userID)
+	}
+	return false, nil
+}
+
 func (m *mockUserRepository) Update(ctx context.Context, user *model.User) error {
 	return m.updateFunc(ctx, user)
 }
 
-func (m *mockUserRepository) UpdateProfileName(ctx context.Context, id int64, name string) error {
-	if m.updateProfileNameFunc == nil {
+func (m *mockUserRepository) UpdateProfile(ctx context.Context, id int64, name string, phone string) error {
+	if m.updateProfileFunc == nil {
 		return nil
 	}
-	return m.updateProfileNameFunc(ctx, id, name)
+	return m.updateProfileFunc(ctx, id, name, phone)
+}
+
+func (m *mockUserRepository) UpdatePasswordHash(ctx context.Context, id int64, passwordHash string) error {
+	if m.updatePasswordHashFunc == nil {
+		return nil
+	}
+	return m.updatePasswordHashFunc(ctx, id, passwordHash)
 }
 
 func (m *mockUserRepository) UpdateAvatarURL(ctx context.Context, id int64, avatarURL string) error {
@@ -227,6 +273,22 @@ type mockOrderRepository struct {
 	findItemsByOrderIDsFunc func(ctx context.Context, db repository.Queryer, orderIDs []int64) (map[int64][]model.OrderItem, error)
 }
 
+type mockPaymentRepository struct {
+	createFunc                         func(ctx context.Context, db repository.Queryer, payment *model.Payment) error
+	findLatestByOrderIDAndProviderFunc func(ctx context.Context, db repository.Queryer, orderID int64, provider string) (*model.Payment, error)
+	findByTransactionIDFunc            func(ctx context.Context, db repository.Queryer, transactionID string) (*model.Payment, error)
+	findByAppTransactionIDFunc         func(ctx context.Context, db repository.Queryer, appTransactionID string) (*model.Payment, error)
+	updateGatewayInitializationFunc    func(ctx context.Context, db repository.Queryer, payment *model.Payment) error
+	updateStatusFunc                   func(ctx context.Context, db repository.Queryer, payment *model.Payment) error
+	updateRawCallbackFunc              func(ctx context.Context, db repository.Queryer, paymentID int64, rawCallback string) error
+}
+
+type mockZaloPayClient struct {
+	createOrderFunc    func(ctx context.Context, req ZaloPayCreateOrderRequest) (*ZaloPayCreateOrderResponse, string, error)
+	queryOrderFunc     func(ctx context.Context, appTransID string) (*ZaloPayQueryOrderResponse, string, error)
+	verifyCallbackFunc func(data string, mac string) bool
+}
+
 type mockOAuthAccountRepository struct {
 	createWithQuerierFunc    func(ctx context.Context, q repository.Queryer, account *model.OAuthAccount) error
 	findByProviderUserIDFunc func(ctx context.Context, provider string, providerUserID string) (*model.OAuthAccount, error)
@@ -349,6 +411,77 @@ func (m *mockOrderRepository) FindItemsByOrderIDs(ctx context.Context, db reposi
 		itemsByOrderID[orderID] = items
 	}
 	return itemsByOrderID, nil
+}
+
+func (m *mockPaymentRepository) Create(ctx context.Context, db repository.Queryer, payment *model.Payment) error {
+	if m.createFunc != nil {
+		return m.createFunc(ctx, db, payment)
+	}
+	payment.ID = 1
+	return nil
+}
+
+func (m *mockPaymentRepository) FindLatestByOrderIDAndProvider(ctx context.Context, db repository.Queryer, orderID int64, provider string) (*model.Payment, error) {
+	if m.findLatestByOrderIDAndProviderFunc != nil {
+		return m.findLatestByOrderIDAndProviderFunc(ctx, db, orderID, provider)
+	}
+	return nil, nil
+}
+
+func (m *mockPaymentRepository) FindByTransactionID(ctx context.Context, db repository.Queryer, transactionID string) (*model.Payment, error) {
+	if m.findByTransactionIDFunc != nil {
+		return m.findByTransactionIDFunc(ctx, db, transactionID)
+	}
+	return nil, nil
+}
+
+func (m *mockPaymentRepository) FindByAppTransactionID(ctx context.Context, db repository.Queryer, appTransactionID string) (*model.Payment, error) {
+	if m.findByAppTransactionIDFunc != nil {
+		return m.findByAppTransactionIDFunc(ctx, db, appTransactionID)
+	}
+	return nil, nil
+}
+
+func (m *mockPaymentRepository) UpdateGatewayInitialization(ctx context.Context, db repository.Queryer, payment *model.Payment) error {
+	if m.updateGatewayInitializationFunc != nil {
+		return m.updateGatewayInitializationFunc(ctx, db, payment)
+	}
+	return nil
+}
+
+func (m *mockPaymentRepository) UpdateStatus(ctx context.Context, db repository.Queryer, payment *model.Payment) error {
+	if m.updateStatusFunc != nil {
+		return m.updateStatusFunc(ctx, db, payment)
+	}
+	return nil
+}
+
+func (m *mockPaymentRepository) UpdateRawCallback(ctx context.Context, db repository.Queryer, paymentID int64, rawCallback string) error {
+	if m.updateRawCallbackFunc != nil {
+		return m.updateRawCallbackFunc(ctx, db, paymentID, rawCallback)
+	}
+	return nil
+}
+
+func (m *mockZaloPayClient) CreateOrder(ctx context.Context, req ZaloPayCreateOrderRequest) (*ZaloPayCreateOrderResponse, string, error) {
+	if m.createOrderFunc != nil {
+		return m.createOrderFunc(ctx, req)
+	}
+	return nil, "", nil
+}
+
+func (m *mockZaloPayClient) QueryOrder(ctx context.Context, appTransID string) (*ZaloPayQueryOrderResponse, string, error) {
+	if m.queryOrderFunc != nil {
+		return m.queryOrderFunc(ctx, appTransID)
+	}
+	return nil, "", nil
+}
+
+func (m *mockZaloPayClient) VerifyCallback(data string, mac string) bool {
+	if m.verifyCallbackFunc != nil {
+		return m.verifyCallbackFunc(data, mac)
+	}
+	return false
 }
 
 type mockTxBeginner struct {

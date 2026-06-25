@@ -38,6 +38,7 @@ export const STORAGE_KEYS = Object.freeze({
   REFRESH_TOKEN: "refresh_token",
   USER: "user",
   CART: "cart",
+  ORDER_DRAFT: "order_draft",
 });
 
 export const AUTH_EVENTS = Object.freeze({
